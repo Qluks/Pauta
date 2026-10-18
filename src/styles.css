@@ -202,3 +202,14 @@ input, select, textarea { font-size: 16px; } /* 16px ou mais evita o zoom autom�
   .toast { bottom: calc(84px + env(safe-area-inset-bottom)); }
   .side-head { flex-wrap: wrap; }
 }
+
+/* ---- Aproveitar melhor a tela ---- */
+/* Etiquetas sempre numa linha própria, abaixo do título: o título usa a largura toda */
+.row { flex-wrap: wrap; gap: 4px 12px; }
+.row .badges { order: 3; flex: 1 1 100%; justify-content: flex-start; padding-left: 36px; }
+@media (min-width: 701px) {
+  .shell { max-width: 1360px; grid-template-columns: 250px minmax(0, 1fr); gap: 56px; }
+  .side { position: sticky; top: 24px; align-self: start; max-height: calc(100dvh - 48px); overflow-y: auto; }
+  .content { padding-bottom: 48px; }
+}
+@media (min-width: 1500px) { .notes { columns: 260px; } }

@@ -3,7 +3,7 @@ import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 import type { List, Note, Task } from "./types";
 
-export const TASK_COLS = "id,title,done,done_at,created_at,due_at,priority,list_id,tags,recurrence";
+export const TASK_COLS = "id,title,done,done_at,created_at,due_at,priority,list_id,tags,recurrence,snoozed_until";
 export const NOTE_COLS = "id,title,body,color,tags,pinned,archived,created_at,updated_at";
 export const LIST_COLS = "id,name,color";
 

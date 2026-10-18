@@ -4,8 +4,8 @@ import type { Task } from "./types";
 import { cv, listColor } from "./colors";
 import { TASK_COLS, useData } from "./data";
 import { useToast } from "./Toast";
-import { describeDate, fmt, today, tomorrow } from "./util";
-import { nextDue, parseQuick, RECURRENCE_LABEL } from "./parse";
+import { describeDate, fmt, isDormant, today, tomorrow } from "./util";
+import { nextDue, parseQuick, RECURRENCE_LABEL, snoozeUntil } from "./parse";
 import TagInput from "./Tags";
 import ListEditor from "./ListEditor";
 
@@ -44,8 +44,8 @@ export default function Tasks({ view }: { view: string }) {
 
   // Tarefas da tela atual
   const inView = (t: Task) => {
-    if (view === "done") return t.done;
-    if (t.done) return false;
+    if (view === "done") return t.done || isDormant(t);
+    if (t.done || isDormant(t)) return false;
     if (view === "today") return !!t.due_at && t.due_at <= t0;
     if (view === "upcoming") return !!t.due_at && t.due_at > t0;
     if (view.startsWith("list:")) return t.list_id === view.slice(5);
@@ -83,7 +83,7 @@ export default function Tasks({ view }: { view: string }) {
       recurrence: p.recurrence,
     };
     const tempId = crypto.randomUUID();
-    const temp: Task = { id: tempId, done: false, done_at: null, created_at: new Date().toISOString(), ...fields };
+    const temp: Task = { id: tempId, done: false, done_at: null, snoozed_until: null, created_at: new Date().toISOString(), ...fields };
     setTasks((prev) => [temp, ...prev]);
     const { data, error } = await supabase.from("tasks").insert({ id: tempId, ...fields }).select(TASK_COLS).single();
     if (error) {
@@ -105,11 +105,19 @@ export default function Tasks({ view }: { view: string }) {
   }
 
   function toggle(t: Task) {
-    // Tarefa recorrente: em vez de concluir, passa para a próxima data
+    // Tarefa recorrente que está "dormindo": traz de volta agora
+    if (isDormant(t)) {
+      patch(t, { snoozed_until: null, done_at: null });
+      return;
+    }
+    // Tarefa recorrente: vai para a próxima data e some da lista até chegar perto dela
     if (!t.done && t.recurrence && t.due_at) {
       const next = nextDue(t.due_at, t.recurrence);
-      patch(t, { due_at: next });
-      toast(`${RECURRENCE_LABEL[t.recurrence] ?? "Repete"}: próxima em ${fmt(next)}`, { onUndo: () => patch(t, { due_at: t.due_at }) });
+      const until = snoozeUntil(next, t.recurrence);
+      patch(t, { due_at: next, snoozed_until: until, ...(until ? { done_at: new Date().toISOString() } : {}) });
+      toast(until ? `Concluída. Volta ${until === tomorrow() ? "amanhã" : "em " + fmt(until)}` : `Próxima em ${fmt(next)}`, {
+        onUndo: () => patch(t, { due_at: t.due_at, snoozed_until: t.snoozed_until, done_at: t.done_at }),
+      });
       return;
     }
     patch(t, { done: !t.done, done_at: t.done ? null : new Date().toISOString() });
@@ -140,13 +148,14 @@ export default function Tasks({ view }: { view: string }) {
 
   function renderTask(t: Task) {
     const overdue = !t.done && t.due_at !== null && t.due_at < t0;
+    const dormant = isDormant(t);
     const li = lists.findIndex((l) => l.id === t.list_id);
     const color = li >= 0 ? listColor(lists[li], li) : "var(--muted)";
     const ln = li >= 0 ? lists[li].name : undefined;
     return (
-      <li key={t.id} className={t.done ? "done" : ""} style={cv(color)}>
+      <li key={t.id} className={t.done || dormant ? "done" : ""} style={cv(color)}>
         <div className="row">
-          <input type="checkbox" checked={t.done} onChange={() => toggle(t)} aria-label={`Concluir ${t.title}`} />
+          <input type="checkbox" checked={t.done || dormant} onChange={() => toggle(t)} aria-label={`Concluir ${t.title}`} />
           {editingId === t.id ? (
             <input className="edit" autoFocus value={editText} onChange={(e) => setEditText(e.target.value)} onKeyDown={(e) => onEditKey(e, t)} onBlur={() => saveEdit(t)} />
           ) : (
@@ -156,6 +165,7 @@ export default function Tasks({ view }: { view: string }) {
           )}
           <span className="badges">
             {t.priority > 0 && <span className={`badge p${t.priority}`}>{PRIORITY[t.priority]}</span>}
+            {dormant && t.snoozed_until && <span className="badge">Volta {t.snoozed_until === tomorrow() ? "amanhã" : "em " + fmt(t.snoozed_until)}</span>}
             {t.due_at && <span className={`badge${overdue ? " late" : ""}`}>{overdue ? "Atrasada " : ""}{fmt(t.due_at)}</span>}
             {t.recurrence && <span className="badge">{RECURRENCE_LABEL[t.recurrence] ?? t.recurrence}</span>}
             {ln && !currentList && <span className="badge list">{ln}</span>}

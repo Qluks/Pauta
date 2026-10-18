@@ -1,3 +1,5 @@
+import type { Task } from "./types";
+
 export function isoDate(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
@@ -15,3 +17,6 @@ export const describeDate = (d: string) => (d === today() ? "hoje" : d === tomor
 
 export const normTag = (s: string) => s.trim().replace(/^#+/, "").toLowerCase().replace(/\s+/g, "-").slice(0, 24);
 export const sameTags = (a: string[], b: string[]) => a.length === b.length && a.every((t, i) => t === b[i]);
+
+// Tarefa recorrente já concluída que ainda "dorme" até chegar perto do próximo prazo
+export const isDormant = (t: Task) => !t.done && !!t.snoozed_until && t.snoozed_until > today();

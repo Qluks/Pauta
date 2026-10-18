@@ -4,7 +4,7 @@ import type { List } from "./types";
 import Mark from "./Mark";
 import { cv, listColor } from "./colors";
 import { LIST_COLS, useData } from "./data";
-import { today } from "./util";
+import { isDormant, today } from "./util";
 
 type Props = { view: string; setView: (v: string) => void; onSignOut: () => void };
 
@@ -23,7 +23,7 @@ export default function Sidebar({ view, setView, onSignOut }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const t0 = today();
-  const pending = tasks.filter((t) => !t.done);
+  const pending = tasks.filter((t) => !t.done && !isDormant(t));
   const counts: Record<string, number> = {
     today: pending.filter((t) => t.due_at && t.due_at <= t0).length,
     upcoming: pending.filter((t) => t.due_at && t.due_at > t0).length,

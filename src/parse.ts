@@ -170,3 +170,13 @@ export function nextDue(due: string, rec: string, now = new Date()): string {
   while (isoDate(cur) <= todayIso);
   return isoDate(cur);
 }
+
+// Quantos dias antes do prazo a tarefa concluída volta para a lista
+export const RECURRENCE_LEAD: Record<string, number> = { daily: 0, weekdays: 0, weekly: 2, monthly: 5 };
+
+// Data em que a tarefa volta a aparecer (ou null, se o prazo já está perto o bastante)
+export function snoozeUntil(next: string, rec: string, now = new Date()): string | null {
+  const [y, m, d] = next.split("-").map(Number);
+  const iso = isoDate(new Date(y, m - 1, d - (RECURRENCE_LEAD[rec] ?? 0)));
+  return iso > isoDate(now) ? iso : null;
+}

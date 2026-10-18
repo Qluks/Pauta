@@ -9,6 +9,7 @@ export type Task = {
   list_id: string | null;
   tags: string[];
   recurrence: string | null; // daily | weekdays | weekly | monthly
+  snoozed_until: string | null; // tarefa recorrente concluída: só volta para a lista nesta data
 };
 
 export type List = { id: string; name: string; color: number | null };
