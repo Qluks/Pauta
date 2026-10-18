@@ -1,12 +1,15 @@
-import { FormEvent, KeyboardEvent, useEffect, useState } from "react";
+import { FormEvent, KeyboardEvent, useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabase";
 import type { Note } from "./types";
 import { cv, lineVar } from "./colors";
 
-const COLS = "id,title,body,color,pinned,archived,created_at,updated_at";
+const COLS = "id,title,body,color,tags,pinned,archived,created_at,updated_at";
 const NAMES = ["Azul", "Verde", "Laranja", "Magenta", "Roxo", "Verde-azulado"];
 const colorOf = (c: string | null) => (c === null ? "var(--rule)" : lineVar(Number(c)));
-const EMPTY = { title: "", body: "", color: null as string | null };
+const EMPTY = { title: "", body: "", color: null as string | null, tags: [] as string[] };
+
+const normTag = (s: string) => s.trim().replace(/^#+/, "").toLowerCase().replace(/\s+/g, "-").slice(0, 24);
+const sameTags = (a: string[], b: string[]) => a.length === b.length && a.every((t, i) => t === b[i]);
 
 function Swatches({ value, onPick }: { value: string | null; onPick: (c: string | null) => void }) {
   return (
@@ -19,16 +22,67 @@ function Swatches({ value, onPick }: { value: string | null; onPick: (c: string 
   );
 }
 
+function TagInput({ tags, onChange, suggestions, listId }: { tags: string[]; onChange: (t: string[]) => void; suggestions: string[]; listId: string }) {
+  const [text, setText] = useState("");
+
+  function commit(raw: string) {
+    const t = normTag(raw);
+    if (t && !tags.includes(t)) onChange([...tags, t]);
+    setText("");
+  }
+
+  return (
+    <div className="taginput">
+      {tags.map((t) => (
+        <span key={t} className="chip">
+          #{t}
+          <button type="button" aria-label={`Remover etiqueta ${t}`} onClick={() => onChange(tags.filter((x) => x !== t))}>
+            ×
+          </button>
+        </span>
+      ))}
+      <input
+        value={text}
+        list={listId}
+        placeholder={tags.length ? "" : "Etiquetas (Enter adiciona)"}
+        aria-label="Adicionar etiqueta"
+        enterKeyHint="done"
+        onChange={(e) => {
+          const v = e.target.value;
+          if (v.endsWith(",")) commit(v.slice(0, -1));
+          else setText(v);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            e.stopPropagation();
+            commit(text);
+          } else if (e.key === "Backspace" && !text && tags.length) {
+            onChange(tags.slice(0, -1));
+          }
+        }}
+        onBlur={() => text.trim() && commit(text)}
+      />
+      <datalist id={listId}>
+        {suggestions.filter((s) => !tags.includes(s)).map((s) => (
+          <option key={s} value={s} />
+        ))}
+      </datalist>
+    </div>
+  );
+}
+
 export default function Notes({ view }: { view: string }) {
   const archive = view === "archive";
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
   const [draft, setDraft] = useState(EMPTY);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [edit, setEdit] = useState({ title: "", body: "" });
+  const [edit, setEdit] = useState({ title: "", body: "", tags: [] as string[] });
 
   useEffect(() => {
     (async () => {
@@ -39,24 +93,41 @@ export default function Notes({ view }: { view: string }) {
     })();
   }, []);
 
+  // Etiquetas da tela atual (com contagem) e todas as etiquetas, para sugestões
+  const tagCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const n of notes) {
+      if (n.archived !== archive) continue;
+      for (const t of n.tags ?? []) m.set(t, (m.get(t) ?? 0) + 1);
+    }
+    return [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }, [notes, archive]);
+  const allTagNames = useMemo(() => [...new Set(notes.flatMap((n) => n.tags ?? []))].sort(), [notes]);
+  const activeTag = tagFilter && tagCounts.some(([t]) => t === tagFilter) ? tagFilter : null;
+
+  function openCompose() {
+    setDraft({ ...EMPTY, tags: activeTag ? [activeTag] : [] });
+    setComposing(true);
+  }
+
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName;
       if (e.key === "n" && !e.ctrlKey && !e.metaKey && !archive && !["INPUT", "TEXTAREA", "SELECT"].includes(tag)) {
         e.preventDefault();
-        setComposing(true);
+        openCompose();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [archive]);
+  }, [archive, activeTag]);
 
   async function add(e?: FormEvent) {
     e?.preventDefault();
     const title = draft.title.trim();
     const body = draft.body.trim();
     if (!title && !body) return;
-    const fields = { title, body, color: draft.color };
+    const fields = { title, body, color: draft.color, tags: draft.tags };
     setDraft(EMPTY);
     setComposing(false);
     const tempId = crypto.randomUUID();
@@ -94,13 +165,15 @@ export default function Notes({ view }: { view: string }) {
 
   function startEdit(n: Note) {
     setEditingId(n.id);
-    setEdit({ title: n.title ?? "", body: n.body ?? "" });
+    setEdit({ title: n.title ?? "", body: n.body ?? "", tags: n.tags ?? [] });
   }
   function saveEdit(n: Note) {
     setEditingId(null);
     const title = edit.title.trim();
     const body = edit.body.trim();
-    if (title !== (n.title ?? "") || body !== (n.body ?? "")) patch(n, { title, body });
+    if (title !== (n.title ?? "") || body !== (n.body ?? "") || !sameTags(edit.tags, n.tags ?? [])) {
+      patch(n, { title, body, tags: edit.tags });
+    }
   }
   function ctrlEnter(e: KeyboardEvent, fn: () => void) {
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") fn();
@@ -109,7 +182,8 @@ export default function Notes({ view }: { view: string }) {
   const q = query.trim().toLowerCase();
   const shown = notes
     .filter((n) => n.archived === archive)
-    .filter((n) => `${n.title ?? ""} ${n.body ?? ""}`.toLowerCase().includes(q))
+    .filter((n) => !activeTag || (n.tags ?? []).includes(activeTag))
+    .filter((n) => `${n.title ?? ""} ${n.body ?? ""} ${(n.tags ?? []).join(" ")}`.toLowerCase().includes(q))
     .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
   const pinned = archive ? [] : shown.filter((n) => n.pinned);
   const others = archive ? shown : shown.filter((n) => !n.pinned);
@@ -120,6 +194,7 @@ export default function Notes({ view }: { view: string }) {
         <>
           <input className="ntitle" autoFocus value={edit.title} onChange={(e) => setEdit({ ...edit, title: e.target.value })} placeholder="Título" aria-label="Título" />
           <textarea className="nbody" rows={5} value={edit.body} onChange={(e) => setEdit({ ...edit, body: e.target.value })} onKeyDown={(e) => ctrlEnter(e, () => saveEdit(n))} placeholder="Nota" aria-label="Texto da nota" />
+          <TagInput tags={edit.tags} onChange={(tags) => setEdit({ ...edit, tags })} suggestions={allTagNames} listId="tags-edit" />
           <div className="nactions">
             <button className="primary small" onClick={() => saveEdit(n)}>Salvar</button>
             <button className="ghost" onClick={() => setEditingId(null)}>Cancelar</button>
@@ -129,6 +204,15 @@ export default function Notes({ view }: { view: string }) {
         <>
           {n.title && <h3>{n.title}</h3>}
           {n.body && <p>{n.body}</p>}
+          {(n.tags ?? []).length > 0 && (
+            <div className="ntags">
+              {(n.tags ?? []).map((t) => (
+                <button key={t} className="chip tag" onClick={() => setTagFilter(t)} aria-label={`Filtrar pela etiqueta ${t}`}>
+                  #{t}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="nactions">
             <button className="ghost" onClick={() => startEdit(n)}>Editar</button>
             {!archive && (
@@ -154,6 +238,7 @@ export default function Notes({ view }: { view: string }) {
           <form className="compose" onSubmit={add}>
             <input className="ntitle" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Título" aria-label="Título" />
             <textarea className="nbody" autoFocus rows={4} value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} onKeyDown={(e) => ctrlEnter(e, () => add())} placeholder="Escreva sua nota (Ctrl + Enter salva)" aria-label="Texto da nota" />
+            <TagInput tags={draft.tags} onChange={(tags) => setDraft({ ...draft, tags })} suggestions={allTagNames} listId="tags-compose" />
             <Swatches value={draft.color} onPick={(c) => setDraft({ ...draft, color: c })} />
             <div className="nactions">
               <button className="primary small">Salvar</button>
@@ -161,10 +246,24 @@ export default function Notes({ view }: { view: string }) {
             </div>
           </form>
         ) : (
-          <input className="search compose-closed" readOnly onFocus={() => setComposing(true)} onClick={() => setComposing(true)} placeholder="Escreva uma nota…" aria-label="Nova nota" />
+          <div className="quick">
+            <input readOnly onFocus={openCompose} onClick={openCompose} placeholder="Escreva uma nota…" aria-label="Nova nota" />
+            <button className="primary" onClick={openCompose}>Nova nota</button>
+          </div>
         ))}
 
       <input className="search" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar notas" aria-label="Buscar notas" />
+
+      {tagCounts.length > 0 && (
+        <div className="tagbar" role="group" aria-label="Filtrar por etiqueta">
+          <button className="tagchip" aria-pressed={activeTag === null} onClick={() => setTagFilter(null)}>Todas</button>
+          {tagCounts.map(([t, c]) => (
+            <button key={t} className="tagchip" aria-pressed={activeTag === t} onClick={() => setTagFilter(activeTag === t ? null : t)}>
+              #{t} <span>{c}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {error && (
         <p className="error" role="alert">
@@ -175,7 +274,7 @@ export default function Notes({ view }: { view: string }) {
       {loading ? (
         <p className="empty">Carregando…</p>
       ) : shown.length === 0 ? (
-        <p className="empty">{q ? "Nenhuma nota encontrada." : archive ? "Nada arquivado." : "Nenhuma nota ainda. Escreva a primeira acima."}</p>
+        <p className="empty">{q || activeTag ? "Nenhuma nota encontrada." : archive ? "Nada arquivado." : "Nenhuma nota ainda. Escreva a primeira acima."}</p>
       ) : (
         <>
           {pinned.length > 0 && (

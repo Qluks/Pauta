@@ -16,6 +16,7 @@ export type Note = {
   title: string;
   body: string;
   color: string | null; // índice da cor da linha ("0" a "5") ou null
+  tags: string[];
   pinned: boolean;
   archived: boolean;
   created_at: string;

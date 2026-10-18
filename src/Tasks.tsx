@@ -12,9 +12,16 @@ const TITLES: Record<string, string> = {
   done: "Concluídas",
 };
 
-function today() {
-  const d = new Date();
+function isoDate(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function today() {
+  return isoDate(new Date());
+}
+function tomorrow() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return isoDate(d);
 }
 function fmt(date: string) {
   const [, m, d] = date.split("-");
@@ -180,10 +187,19 @@ export default function Tasks({ view, lists }: { view: string; lists: List[] }) 
                 </div>
                 {openId === t.id && (
                   <div className="details">
-                    <label>
-                      Prazo
-                      <input type="date" value={t.due_at ?? ""} onChange={(e) => patch(t, { due_at: e.target.value || null })} />
-                    </label>
+                    <div className="datefield">
+                      <label>
+                        Prazo
+                        <input type="date" value={t.due_at ?? ""} onChange={(e) => patch(t, { due_at: e.target.value || null })} />
+                      </label>
+                      <div className="datequick">
+                        <button type="button" className="chipbtn" onClick={() => patch(t, { due_at: today() })}>Hoje</button>
+                        <button type="button" className="chipbtn" onClick={() => patch(t, { due_at: tomorrow() })}>Amanhã</button>
+                        {t.due_at && (
+                          <button type="button" className="chipbtn clear" onClick={() => patch(t, { due_at: null })}>Remover prazo</button>
+                        )}
+                      </div>
+                    </div>
                     <label>
                       Prioridade
                       <select value={t.priority} onChange={(e) => patch(t, { priority: Number(e.target.value) })}>

@@ -156,3 +156,29 @@ input, select, textarea { font-size: 16px; } /* 16px ou mais evita o zoom automÃ
   .details input, .details select { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* ---- Ajustes pÃ³s-teste + etiquetas ---- */
+.compose { max-width: none; }
+.addlist { margin-top: 12px; }
+.details { align-items: start; }
+.details > .ghost { margin-top: 20px; }
+.datefield { display: grid; gap: 8px; }
+.datequick, .tagbar { display: flex; flex-wrap: wrap; gap: 6px; }
+.chipbtn, .tagchip { padding: 4px 11px; border: 1px solid var(--rule); border-radius: 999px; background: var(--surface); color: var(--ink); font: 500 0.82rem var(--font-ui); }
+.chipbtn.clear { color: var(--red); border-color: var(--red); }
+.tagbar { margin: 0 0 14px; }
+.tagchip { color: var(--muted); font-size: 0.85rem; }
+.tagchip span { margin-left: 4px; opacity: 0.7; }
+.tagchip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
+.taginput { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 0; }
+.taginput input { width: auto; flex: 1 1 120px; min-width: 0; padding: 4px 0; font-size: 16px; background: transparent; border: 0; }
+.chip { display: inline-flex; align-items: center; gap: 2px; padding: 1px 4px 1px 10px; border: 1px solid var(--rule); border-radius: 999px; background: var(--surface); color: var(--muted); font: 500 0.78rem var(--font-ui); }
+.chip button { padding: 2px 6px; border-radius: 999px; color: inherit; font-size: 0.95rem; line-height: 1; }
+.chip.tag { padding: 2px 10px; cursor: pointer; }
+.chip.tag:hover { color: var(--ink); border-color: var(--ink); }
+.ntags { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 6px; }
+@media (pointer: coarse) { .chipbtn, .tagchip { padding: 7px 13px; } .chip.tag { padding: 5px 11px; } }
+@media (max-width: 700px) {
+  .datefield { flex: 1 1 100%; min-width: 0; }
+  .details > .ghost { margin-top: 0; }
+}
