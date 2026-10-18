@@ -76,7 +76,8 @@ export default function Sidebar({ lists, setLists, view, setView, onSignOut }: P
           ))}
         </ul>
         <form onSubmit={addList} className="addlist">
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nova lista" aria-label="Nova lista" />
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nova lista" aria-label="Nova lista" enterKeyHint="done" />
+          <button className="primary small" aria-label="Criar lista" disabled={!name.trim()}>Criar</button>
         </form>
       </div>
       {error && <p className="error">{error}</p>}

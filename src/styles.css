@@ -121,6 +121,11 @@ input, select, textarea { font-size: 16px; } /* 16px ou mais evita o zoom autom√
 .quick input { min-width: 0; flex: 1; }
 .badges:empty { display: none; }
 .lists .nav { display: block; }
+.addlist { display: flex; gap: 6px; }
+.addlist input { min-width: 0; flex: 1; }
+.primary:disabled { opacity: 0.45; cursor: default; }
+.details input[type="date"], .details select { min-height: 42px; }
+.details input[type="date"] { -webkit-appearance: none; appearance: none; min-width: 0; text-align: left; }
 @media (pointer: coarse) {
   .ghost, .nav button { min-height: 40px; }
   .row input[type="checkbox"] { width: 26px; height: 26px; }
@@ -128,25 +133,26 @@ input, select, textarea { font-size: 16px; } /* 16px ou mais evita o zoom autom√
   .swatches { gap: 10px; }
 }
 @media (max-width: 700px) {
-  .shell { grid-template-columns: minmax(0, 1fr); gap: 14px; padding-left: max(14px, env(safe-area-inset-left)); padding-right: max(14px, env(safe-area-inset-right)); }
+  .shell { grid-template-columns: minmax(0, 1fr); gap: 14px; padding-bottom: calc(96px + env(safe-area-inset-bottom)); padding-left: max(14px, env(safe-area-inset-left)); padding-right: max(14px, env(safe-area-inset-right)); }
   .side { min-width: 0; }
   .side-head { margin-bottom: 8px; }
   .brand { font-size: 1.4rem; }
-  .side .nav, .lists { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+  .side .nav { display: flex; flex-wrap: wrap; gap: 2px 4px; }
   .side .nav li { flex: none; }
   .side .nav button { width: auto; white-space: nowrap; border-left: 0; border-bottom: 3px solid transparent; border-radius: 8px 8px 0 0; }
   .nav button[aria-current="true"] { border-bottom-color: var(--red); }
   .nav .gap { margin-top: 0; }
   .side h2 { display: none; }
-  .lists { align-items: center; margin-top: 2px; }
-  .lists .nav { overflow: visible; padding-bottom: 0; }
-  .addlist { flex: none; width: 150px; }
+  .lists { margin-top: 2px; }
+  .addlist { margin-top: 8px; }
   .heading { font-size: 1.45rem; }
   .row { flex-wrap: wrap; gap: 6px 12px; }
   .row .badges { order: 3; flex-basis: 100%; justify-content: flex-start; padding-left: 36px; }
   .title { font-size: 1.1rem; }
   .details { padding-left: 36px; }
-  .details label { flex: 1 1 130px; }
+  .details { align-items: stretch; }
+  .details label { flex: 1 1 100%; min-width: 0; }
+  .details .ghost { margin-left: -8px; }
   .details input, .details select { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
