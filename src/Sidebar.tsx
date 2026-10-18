@@ -45,7 +45,11 @@ export default function Sidebar({ lists, setLists, view, setView, onSignOut }: P
 
   return (
     <nav className="side" aria-label="Navegação">
-      <h1 className="brand"><Mark /> Pauta</h1>
+      <div className="side-head">
+        <h1 className="brand"><Mark /> Pauta</h1>
+        <button className="ghost" onClick={onSignOut}>Sair</button>
+      </div>
+
       <ul className="nav">
         {VIEWS.map((v) => (
           <li key={v.id} className={v.gap ? "gap" : undefined}>
@@ -57,27 +61,25 @@ export default function Sidebar({ lists, setLists, view, setView, onSignOut }: P
       </ul>
 
       <h2>Listas</h2>
-      <ul className="nav">
-        {lists.map((l, i) => (
-          <li key={l.id} className="with-x">
-            <button aria-current={view === `list:${l.id}`} onClick={() => setView(`list:${l.id}`)}>
-              <span className="lbadge" style={cv(lineVar(i))}>{l.name.charAt(0).toUpperCase()}</span>
-              {l.name}
-            </button>
-            <button className="ghost" onClick={() => removeList(l)} aria-label={`Excluir lista ${l.name}`}>
-              ×
-            </button>
-          </li>
-        ))}
-      </ul>
-      <form onSubmit={addList} className="addlist">
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nova lista" aria-label="Nova lista" />
-      </form>
+      <div className="lists">
+        <ul className="nav">
+          {lists.map((l, i) => (
+            <li key={l.id} className="with-x">
+              <button aria-current={view === `list:${l.id}`} onClick={() => setView(`list:${l.id}`)}>
+                <span className="lbadge" style={cv(lineVar(i))}>{l.name.charAt(0).toUpperCase()}</span>
+                {l.name}
+              </button>
+              <button className="ghost" onClick={() => removeList(l)} aria-label={`Excluir lista ${l.name}`}>
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+        <form onSubmit={addList} className="addlist">
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nova lista" aria-label="Nova lista" />
+        </form>
+      </div>
       {error && <p className="error">{error}</p>}
-
-      <button className="ghost signout" onClick={onSignOut}>
-        Sair
-      </button>
     </nav>
   );
 }

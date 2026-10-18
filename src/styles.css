@@ -89,19 +89,6 @@ button { cursor: pointer; border: 0; border-radius: 8px; background: none; paddi
 .login form { display: grid; gap: 14px; margin-bottom: 12px; }
 .login label { display: grid; gap: 4px; color: var(--muted); font-size: 0.85rem; }
 
-@media (max-width: 700px) {
-  .shell { grid-template-columns: 1fr; gap: 12px; padding-inline: 14px; }
-  .brand { margin-bottom: 10px; font-size: 1.4rem; }
-  .side .nav { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 4px; }
-  .side .nav li { flex: none; }
-  .side .nav button { width: auto; white-space: nowrap; border-left: 0; border-bottom: 3px solid transparent; border-radius: 8px 8px 0 0; }
-  .nav button[aria-current="true"] { border-bottom-color: var(--red); }
-  .side h2, .addlist, .signout { display: none; }
-  .row { flex-wrap: wrap; }
-  .badges { flex-basis: 100%; justify-content: flex-start; padding-left: 36px; }
-  .details { padding-left: 4px; }
-}
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
 /* ---- Etapa 3: notas ---- */
 .nav .gap { margin-top: 14px; }
@@ -124,4 +111,42 @@ button { cursor: pointer; border: 0; border-radius: 8px; background: none; paddi
 .sw.none { background: var(--surface); }
 .sw[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--ink); }
 .group-label { margin: 8px 0; color: var(--muted); font: 600 0.85rem var(--font-ui); }
-@media (max-width: 700px) { .nav .gap { margin-top: 0; } }
+
+/* ---- Ajustes para celular ---- */
+html { -webkit-text-size-adjust: 100%; }
+input, select, textarea { font-size: 16px; } /* 16px ou mais evita o zoom automático ao focar no iPhone */
+.shell { min-height: 100dvh; }
+.side-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; }
+.side-head .brand { margin: 0; }
+.quick input { min-width: 0; flex: 1; }
+.badges:empty { display: none; }
+.lists .nav { display: block; }
+@media (pointer: coarse) {
+  .ghost, .nav button { min-height: 40px; }
+  .row input[type="checkbox"] { width: 26px; height: 26px; }
+  .sw { width: 24px; height: 24px; }
+  .swatches { gap: 10px; }
+}
+@media (max-width: 700px) {
+  .shell { grid-template-columns: minmax(0, 1fr); gap: 14px; padding-left: max(14px, env(safe-area-inset-left)); padding-right: max(14px, env(safe-area-inset-right)); }
+  .side { min-width: 0; }
+  .side-head { margin-bottom: 8px; }
+  .brand { font-size: 1.4rem; }
+  .side .nav, .lists { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+  .side .nav li { flex: none; }
+  .side .nav button { width: auto; white-space: nowrap; border-left: 0; border-bottom: 3px solid transparent; border-radius: 8px 8px 0 0; }
+  .nav button[aria-current="true"] { border-bottom-color: var(--red); }
+  .nav .gap { margin-top: 0; }
+  .side h2 { display: none; }
+  .lists { align-items: center; margin-top: 2px; }
+  .lists .nav { overflow: visible; padding-bottom: 0; }
+  .addlist { flex: none; width: 150px; }
+  .heading { font-size: 1.45rem; }
+  .row { flex-wrap: wrap; gap: 6px 12px; }
+  .row .badges { order: 3; flex-basis: 100%; justify-content: flex-start; padding-left: 36px; }
+  .title { font-size: 1.1rem; }
+  .details { padding-left: 36px; }
+  .details label { flex: 1 1 130px; }
+  .details input, .details select { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

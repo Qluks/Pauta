@@ -28,12 +28,13 @@ export default function Login() {
       <form onSubmit={submit}>
         <label>
           E-mail
-          <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+          <input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
         </label>
         <label>
           Senha
           <input
             type="password"
+            autoComplete={mode === "in" ? "current-password" : "new-password"}
             required
             minLength={6}
             value={password}
