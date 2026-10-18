@@ -1,4 +1,5 @@
 import { createContext, Dispatch, ReactNode, SetStateAction, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 import type { List, Note, Task } from "./types";
 
@@ -25,6 +26,26 @@ export function useData() {
   const v = useContext(Ctx);
   if (!v) throw new Error("useData fora do DataProvider");
   return v;
+}
+
+type Payload = RealtimePostgresChangesPayload<{ [key: string]: any }>;
+
+// Aplica no estado uma mudança vinda do servidor (inserir, atualizar ou apagar uma linha)
+function applyChange<T extends { id: string }>(set: Dispatch<SetStateAction<T[]>>, columns: string, append = false) {
+  return (p: Payload) => {
+    if (p.eventType === "DELETE") {
+      const id = (p.old as { id?: string }).id;
+      if (id) set((prev) => prev.filter((x) => x.id !== id));
+      return;
+    }
+    const src = p.new as Record<string, unknown>;
+    const row = {} as Record<string, unknown>;
+    for (const c of columns.split(",")) row[c] = src[c];
+    const item = row as unknown as T;
+    set((prev) =>
+      prev.some((x) => x.id === item.id) ? prev.map((x) => (x.id === item.id ? item : x)) : append ? [...prev, item] : [item, ...prev]
+    );
+  };
 }
 
 export function DataProvider({ children }: { children: ReactNode }) {
@@ -72,6 +93,25 @@ export function DataProvider({ children }: { children: ReactNode }) {
       document.removeEventListener("visibilitychange", maybe);
       window.removeEventListener("focus", maybe);
       window.removeEventListener("online", maybe);
+    };
+  }, [reload]);
+
+  // Tempo real: o que muda em outro aparelho aparece aqui na hora (precisa do realtime.sql)
+  useEffect(() => {
+    let first = true;
+    const channel = supabase
+      .channel("pauta-changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, applyChange<Task>(setTasks, TASK_COLS))
+      .on("postgres_changes", { event: "*", schema: "public", table: "lists" }, applyChange<List>(setLists, LIST_COLS, true))
+      .on("postgres_changes", { event: "*", schema: "public", table: "notes" }, applyChange<Note>(setNotes, NOTE_COLS))
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          if (!first) reload(); // reconectou: busca o que passou enquanto estava fora
+          first = false;
+        }
+      });
+    return () => {
+      supabase.removeChannel(channel);
     };
   }, [reload]);
 

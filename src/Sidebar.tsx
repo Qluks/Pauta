@@ -41,7 +41,10 @@ export default function Sidebar({ view, setView, onSignOut }: Props) {
     const color = [0, 1, 2, 3, 4, 5].find((c) => !used.has(c)) ?? lists.length % 6;
     const { data, error } = await supabase.from("lists").insert({ name: n, color }).select(LIST_COLS).single();
     if (error) setError(error.message);
-    else setLists((p) => [...p, data as unknown as List]);
+    else {
+      const row = data as unknown as List;
+      setLists((p) => (p.some((l) => l.id === row.id) ? p : [...p, row]));
+    }
   }
 
   async function removeList(l: List) {

@@ -64,13 +64,13 @@ export default function Notes({ view }: { view: string }) {
     const now = new Date().toISOString();
     const temp: Note = { id: tempId, pinned: false, archived: false, created_at: now, updated_at: now, ...fields };
     setNotes((p) => [temp, ...p]);
-    const { data, error } = await supabase.from("notes").insert(fields).select(NOTE_COLS).single();
+    const { data, error } = await supabase.from("notes").insert({ id: tempId, ...fields }).select(NOTE_COLS).single();
     if (error) {
       setNotes((p) => p.filter((x) => x.id !== tempId));
       setError(error.message);
     } else {
       const row = data as unknown as Note;
-      setNotes((p) => (p.some((x) => x.id === tempId) ? p.map((x) => (x.id === tempId ? row : x)) : p.some((x) => x.id === row.id) ? p : [row, ...p]));
+      setNotes((p) => (p.some((x) => x.id === row.id) ? p.map((x) => (x.id === row.id ? row : x)) : [row, ...p]));
     }
   }
 

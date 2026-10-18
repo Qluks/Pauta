@@ -85,15 +85,13 @@ export default function Tasks({ view }: { view: string }) {
     const tempId = crypto.randomUUID();
     const temp: Task = { id: tempId, done: false, done_at: null, created_at: new Date().toISOString(), ...fields };
     setTasks((prev) => [temp, ...prev]);
-    const { data, error } = await supabase.from("tasks").insert(fields).select(TASK_COLS).single();
+    const { data, error } = await supabase.from("tasks").insert({ id: tempId, ...fields }).select(TASK_COLS).single();
     if (error) {
       setTasks((prev) => prev.filter((x) => x.id !== tempId));
       setError(error.message);
     } else {
       const row = data as unknown as Task;
-      setTasks((prev) =>
-        prev.some((x) => x.id === tempId) ? prev.map((x) => (x.id === tempId ? row : x)) : prev.some((x) => x.id === row.id) ? prev : [row, ...prev]
-      );
+      setTasks((prev) => (prev.some((x) => x.id === row.id) ? prev.map((x) => (x.id === row.id ? row : x)) : [row, ...prev]));
     }
   }
 
