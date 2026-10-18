@@ -39,6 +39,18 @@ export default function Notes({ view }: { view: string }) {
     })();
   }, []);
 
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      if (e.key === "n" && !e.ctrlKey && !e.metaKey && !archive && !["INPUT", "TEXTAREA", "SELECT"].includes(tag)) {
+        e.preventDefault();
+        setComposing(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [archive]);
+
   async function add(e?: FormEvent) {
     e?.preventDefault();
     const title = draft.title.trim();

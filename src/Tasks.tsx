@@ -44,7 +44,7 @@ export default function Tasks({ view, lists }: { view: string; lists: List[] }) 
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName;
-      if (e.key === "n" && !["INPUT", "TEXTAREA", "SELECT"].includes(tag)) {
+      if (e.key === "n" && !e.ctrlKey && !e.metaKey && !["INPUT", "TEXTAREA", "SELECT"].includes(tag)) {
         e.preventDefault();
         inputRef.current?.focus();
       }

@@ -31,6 +31,23 @@ export default function App() {
       .then(({ data }) => setLists((data as List[]) ?? []));
   }, [session]);
 
+  useEffect(() => {
+    const order = ["today", "upcoming", "all", "done", "notes", "archive"];
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const el = e.target as HTMLElement;
+      if (["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) || el.isContentEditable) return;
+      if (e.key === "/") {
+        e.preventDefault();
+        document.querySelector<HTMLInputElement>('input[type="search"]')?.focus();
+      } else if (/^[1-6]$/.test(e.key)) {
+        setView(order[Number(e.key) - 1]);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   if (!ready) return null;
   if (!session) return <Login />;
 
