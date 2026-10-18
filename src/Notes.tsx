@@ -2,80 +2,19 @@ import { FormEvent, KeyboardEvent, useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabase";
 import type { Note } from "./types";
 import { cv, lineVar } from "./colors";
+import { NOTE_COLS, useData } from "./data";
+import { useToast } from "./Toast";
+import Swatches from "./Swatches";
+import TagInput from "./Tags";
+import { sameTags } from "./util";
 
-const COLS = "id,title,body,color,tags,pinned,archived,created_at,updated_at";
-const NAMES = ["Azul", "Verde", "Laranja", "Magenta", "Roxo", "Verde-azulado"];
 const colorOf = (c: string | null) => (c === null ? "var(--rule)" : lineVar(Number(c)));
 const EMPTY = { title: "", body: "", color: null as string | null, tags: [] as string[] };
 
-const normTag = (s: string) => s.trim().replace(/^#+/, "").toLowerCase().replace(/\s+/g, "-").slice(0, 24);
-const sameTags = (a: string[], b: string[]) => a.length === b.length && a.every((t, i) => t === b[i]);
-
-function Swatches({ value, onPick }: { value: string | null; onPick: (c: string | null) => void }) {
-  return (
-    <div className="swatches" role="group" aria-label="Cor da nota">
-      <button type="button" className="sw none" aria-pressed={value === null} aria-label="Sem cor" onClick={() => onPick(null)} />
-      {NAMES.map((n, i) => (
-        <button type="button" key={i} className="sw" style={cv(lineVar(i))} aria-pressed={value === String(i)} aria-label={n} onClick={() => onPick(String(i))} />
-      ))}
-    </div>
-  );
-}
-
-function TagInput({ tags, onChange, suggestions, listId }: { tags: string[]; onChange: (t: string[]) => void; suggestions: string[]; listId: string }) {
-  const [text, setText] = useState("");
-
-  function commit(raw: string) {
-    const t = normTag(raw);
-    if (t && !tags.includes(t)) onChange([...tags, t]);
-    setText("");
-  }
-
-  return (
-    <div className="taginput">
-      {tags.map((t) => (
-        <span key={t} className="chip">
-          #{t}
-          <button type="button" aria-label={`Remover etiqueta ${t}`} onClick={() => onChange(tags.filter((x) => x !== t))}>
-            ×
-          </button>
-        </span>
-      ))}
-      <input
-        value={text}
-        list={listId}
-        placeholder={tags.length ? "" : "Etiquetas (Enter adiciona)"}
-        aria-label="Adicionar etiqueta"
-        enterKeyHint="done"
-        onChange={(e) => {
-          const v = e.target.value;
-          if (v.endsWith(",")) commit(v.slice(0, -1));
-          else setText(v);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            e.stopPropagation();
-            commit(text);
-          } else if (e.key === "Backspace" && !text && tags.length) {
-            onChange(tags.slice(0, -1));
-          }
-        }}
-        onBlur={() => text.trim() && commit(text)}
-      />
-      <datalist id={listId}>
-        {suggestions.filter((s) => !tags.includes(s)).map((s) => (
-          <option key={s} value={s} />
-        ))}
-      </datalist>
-    </div>
-  );
-}
-
 export default function Notes({ view }: { view: string }) {
   const archive = view === "archive";
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { notes, setNotes, loading, hide, unhide } = useData();
+  const toast = useToast();
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [tagFilter, setTagFilter] = useState<string | null>(null);
@@ -83,15 +22,6 @@ export default function Notes({ view }: { view: string }) {
   const [draft, setDraft] = useState(EMPTY);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [edit, setEdit] = useState({ title: "", body: "", tags: [] as string[] });
-
-  useEffect(() => {
-    (async () => {
-      const { data, error } = await supabase.from("notes").select(COLS).order("updated_at", { ascending: false });
-      if (error) setError(error.message);
-      else setNotes(data as Note[]);
-      setLoading(false);
-    })();
-  }, []);
 
   // Etiquetas da tela atual (com contagem) e todas as etiquetas, para sugestões
   const tagCounts = useMemo(() => {
@@ -134,12 +64,13 @@ export default function Notes({ view }: { view: string }) {
     const now = new Date().toISOString();
     const temp: Note = { id: tempId, pinned: false, archived: false, created_at: now, updated_at: now, ...fields };
     setNotes((p) => [temp, ...p]);
-    const { data, error } = await supabase.from("notes").insert(fields).select(COLS).single();
+    const { data, error } = await supabase.from("notes").insert(fields).select(NOTE_COLS).single();
     if (error) {
       setNotes((p) => p.filter((x) => x.id !== tempId));
       setError(error.message);
     } else {
-      setNotes((p) => p.map((x) => (x.id === tempId ? (data as Note) : x)));
+      const row = data as unknown as Note;
+      setNotes((p) => (p.some((x) => x.id === tempId) ? p.map((x) => (x.id === tempId ? row : x)) : p.some((x) => x.id === row.id) ? p : [row, ...p]));
     }
   }
 
@@ -153,14 +84,23 @@ export default function Notes({ view }: { view: string }) {
     }
   }
 
-  async function remove(note: Note) {
-    if (!window.confirm("Excluir esta nota?")) return;
-    setNotes((p) => p.filter((x) => x.id !== note.id));
-    const { error } = await supabase.from("notes").delete().eq("id", note.id);
-    if (error) {
-      setNotes((p) => [note, ...p]);
-      setError(error.message);
-    }
+  function remove(note: Note) {
+    hide(note.id);
+    toast("Nota excluída", {
+      onUndo: () => unhide(note.id),
+      onCommit: async () => {
+        const { error } = await supabase.from("notes").delete().eq("id", note.id);
+        if (error) setError(error.message);
+        else setNotes((p) => p.filter((x) => x.id !== note.id));
+        unhide(note.id);
+      },
+    });
+  }
+
+  function archiveToggle(n: Note) {
+    const prev = { archived: n.archived, pinned: n.pinned };
+    patch(n, { archived: !n.archived, pinned: false });
+    toast(n.archived ? "Nota desarquivada" : "Nota arquivada", { onUndo: () => patch(n, prev) });
   }
 
   function startEdit(n: Note) {
@@ -218,7 +158,7 @@ export default function Notes({ view }: { view: string }) {
             {!archive && (
               <button className="ghost" onClick={() => patch(n, { pinned: !n.pinned })}>{n.pinned ? "Desafixar" : "Fixar"}</button>
             )}
-            <button className="ghost" onClick={() => patch(n, { archived: !n.archived, pinned: false })}>
+            <button className="ghost" onClick={() => archiveToggle(n)}>
               {n.archived ? "Desarquivar" : "Arquivar"}
             </button>
             <button className="ghost danger" onClick={() => remove(n)}>Excluir</button>

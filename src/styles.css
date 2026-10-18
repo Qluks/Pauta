@@ -182,3 +182,23 @@ input, select, textarea { font-size: 16px; } /* 16px ou mais evita o zoom autom√
   .datefield { flex: 1 1 100%; min-width: 0; }
   .details > .ghost { margin-top: 0; }
 }
+
+/* ---- Pacote 1: avisos, contadores, captura r√°pida, atrasadas ---- */
+.toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); z-index: 20; display: flex; align-items: center; gap: 14px; max-width: calc(100vw - 28px); padding: 10px 12px 10px 16px; transform: translateX(-50%); border-radius: 10px; background: var(--ink); color: var(--on-ink); box-shadow: 0 6px 24px rgb(0 0 0 / 0.25); font: 500 0.95rem var(--font-ui); }
+.toast button { padding: 6px 10px; border-radius: 6px; color: inherit; font-weight: 700; text-decoration: underline; }
+.count { margin-left: auto; padding-left: 10px; color: var(--muted); font: 600 0.78rem var(--font-ui); }
+.side-actions { display: flex; gap: 2px; }
+.headrow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-bottom: 18px; }
+.headrow .heading { margin: 0; }
+.preview { display: flex; flex-wrap: wrap; gap: 6px; margin: -2px 0 12px; }
+.chip.static { padding: 2px 10px; }
+.group-label.late { color: var(--red); }
+.listeditor { display: grid; gap: 10px; max-width: 420px; margin: 0 0 16px; padding: 12px 14px; background: var(--surface); border: 1.5px solid var(--rule); border-radius: 8px; }
+.listeditor label, .lbl { display: grid; gap: 4px; color: var(--muted); font-size: 0.82rem; }
+.listeditor input { width: 100%; padding: 8px 10px; background: var(--paper); border: 1.5px solid var(--rule); border-radius: 8px; }
+.tagsfield { flex: 1 1 100%; display: grid; gap: 2px; }
+.tagsfield .taginput { padding: 2px 0; }
+@media (max-width: 700px) {
+  .toast { bottom: calc(84px + env(safe-area-inset-bottom)); }
+  .side-head { flex-wrap: wrap; }
+}

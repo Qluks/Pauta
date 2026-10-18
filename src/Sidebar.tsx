@@ -2,15 +2,11 @@ import { FormEvent, useState } from "react";
 import { supabase } from "./supabase";
 import type { List } from "./types";
 import Mark from "./Mark";
-import { cv, lineVar } from "./colors";
+import { cv, listColor } from "./colors";
+import { LIST_COLS, useData } from "./data";
+import { today } from "./util";
 
-type Props = {
-  lists: List[];
-  setLists: (fn: (p: List[]) => List[]) => void;
-  view: string;
-  setView: (v: string) => void;
-  onSignOut: () => void;
-};
+type Props = { view: string; setView: (v: string) => void; onSignOut: () => void };
 
 const VIEWS: { id: string; label: string; gap?: boolean }[] = [
   { id: "today", label: "Hoje" },
@@ -21,18 +17,31 @@ const VIEWS: { id: string; label: string; gap?: boolean }[] = [
   { id: "archive", label: "Arquivo" },
 ];
 
-export default function Sidebar({ lists, setLists, view, setView, onSignOut }: Props) {
+export default function Sidebar({ view, setView, onSignOut }: Props) {
+  const { tasks, notes, lists, setLists } = useData();
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  const t0 = today();
+  const pending = tasks.filter((t) => !t.done);
+  const counts: Record<string, number> = {
+    today: pending.filter((t) => t.due_at && t.due_at <= t0).length,
+    upcoming: pending.filter((t) => t.due_at && t.due_at > t0).length,
+    all: pending.length,
+    notes: notes.filter((n) => !n.archived).length,
+  };
 
   async function addList(e: FormEvent) {
     e.preventDefault();
     const n = name.trim();
     if (!n) return;
     setName("");
-    const { data, error } = await supabase.from("lists").insert({ name: n }).select("id,name").single();
+    // Escolhe a primeira cor ainda não usada
+    const used = new Set(lists.map((l, i) => l.color ?? i));
+    const color = [0, 1, 2, 3, 4, 5].find((c) => !used.has(c)) ?? lists.length % 6;
+    const { data, error } = await supabase.from("lists").insert({ name: n, color }).select(LIST_COLS).single();
     if (error) setError(error.message);
-    else setLists((p) => [...p, data as List]);
+    else setLists((p) => [...p, data as unknown as List]);
   }
 
   async function removeList(l: List) {
@@ -43,11 +52,26 @@ export default function Sidebar({ lists, setLists, view, setView, onSignOut }: P
     if (view === `list:${l.id}`) setView("all");
   }
 
+  function exportData() {
+    const json = JSON.stringify({ exportado_em: new Date().toISOString(), listas: lists, tarefas: tasks, notas: notes }, null, 2);
+    const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `pauta-${t0}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  const count = (n: number | undefined) => (n ? <span className="count">{n}</span> : null);
+
   return (
     <nav className="side" aria-label="Navegação">
       <div className="side-head">
         <h1 className="brand"><Mark /> Pauta</h1>
-        <button className="ghost" onClick={onSignOut}>Sair</button>
+        <div className="side-actions">
+          <button className="ghost" onClick={exportData} title="Baixar uma cópia dos seus dados (JSON)">Exportar</button>
+          <button className="ghost" onClick={onSignOut}>Sair</button>
+        </div>
       </div>
 
       <ul className="nav">
@@ -55,6 +79,7 @@ export default function Sidebar({ lists, setLists, view, setView, onSignOut }: P
           <li key={v.id} className={v.gap ? "gap" : undefined}>
             <button aria-current={view === v.id} onClick={() => setView(v.id)}>
               {v.label}
+              {count(counts[v.id])}
             </button>
           </li>
         ))}
@@ -66,8 +91,9 @@ export default function Sidebar({ lists, setLists, view, setView, onSignOut }: P
           {lists.map((l, i) => (
             <li key={l.id} className="with-x">
               <button aria-current={view === `list:${l.id}`} onClick={() => setView(`list:${l.id}`)}>
-                <span className="lbadge" style={cv(lineVar(i))}>{l.name.charAt(0).toUpperCase()}</span>
+                <span className="lbadge" style={cv(listColor(l, i))}>{l.name.charAt(0).toUpperCase()}</span>
                 {l.name}
+                {count(pending.filter((t) => t.list_id === l.id).length)}
               </button>
               <button className="ghost" onClick={() => removeList(l)} aria-label={`Excluir lista ${l.name}`}>
                 ×

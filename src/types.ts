@@ -7,9 +7,11 @@ export type Task = {
   due_at: string | null; // "YYYY-MM-DD"
   priority: number; // 0 nenhuma, 1 baixa, 2 média, 3 alta
   list_id: string | null;
+  tags: string[];
+  recurrence: string | null; // daily | weekdays | weekly | monthly
 };
 
-export type List = { id: string; name: string };
+export type List = { id: string; name: string; color: number | null };
 
 export type Note = {
   id: string;

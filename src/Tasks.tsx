@@ -1,52 +1,34 @@
-import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "./supabase";
-import type { List, Task } from "./types";
-import { cv, lineVar } from "./colors";
+import type { Task } from "./types";
+import { cv, listColor } from "./colors";
+import { TASK_COLS, useData } from "./data";
+import { useToast } from "./Toast";
+import { describeDate, fmt, today, tomorrow } from "./util";
+import { nextDue, parseQuick, RECURRENCE_LABEL } from "./parse";
+import TagInput from "./Tags";
+import ListEditor from "./ListEditor";
 
-const COLS = "id,title,done,done_at,created_at,due_at,priority,list_id";
 const PRIORITY = ["Sem prioridade", "Baixa", "Média", "Alta"];
-const TITLES: Record<string, string> = {
-  today: "Hoje",
-  upcoming: "Próximas",
-  all: "Todas",
-  done: "Concluídas",
-};
+const TITLES: Record<string, string> = { today: "Hoje", upcoming: "Próximas", all: "Todas", done: "Concluídas" };
 
-function isoDate(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-function today() {
-  return isoDate(new Date());
-}
-function tomorrow() {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return isoDate(d);
-}
-function fmt(date: string) {
-  const [, m, d] = date.split("-");
-  return `${d}/${m}`;
-}
-
-export default function Tasks({ view, lists }: { view: string; lists: List[] }) {
-  const [tasks, setTasks] = useState<Task[]>([]);
+export default function Tasks({ view }: { view: string }) {
+  const { tasks, setTasks, lists, loading, loadError, hide, unhide } = useData();
+  const toast = useToast();
   const [title, setTitle] = useState("");
   const [query, setQuery] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
+  const [editingList, setEditingList] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    (async () => {
-      const { data, error } = await supabase.from("tasks").select(COLS).order("created_at", { ascending: false });
-      if (error) setError(error.message);
-      else setTasks(data as Task[]);
-      setLoading(false);
-    })();
-  }, []);
+  const t0 = today();
+  const parsed = useMemo(() => parseQuick(title, lists), [title, lists]);
+  const listIdx = view.startsWith("list:") ? lists.findIndex((l) => `list:${l.id}` === view) : -1;
+  const currentList = listIdx >= 0 ? lists[listIdx] : undefined;
 
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -60,43 +42,92 @@ export default function Tasks({ view, lists }: { view: string; lists: List[] }) 
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Tarefas da tela atual
+  const inView = (t: Task) => {
+    if (view === "done") return t.done;
+    if (t.done) return false;
+    if (view === "today") return !!t.due_at && t.due_at <= t0;
+    if (view === "upcoming") return !!t.due_at && t.due_at > t0;
+    if (view.startsWith("list:")) return t.list_id === view.slice(5);
+    return true;
+  };
+  const base = tasks.filter(inView);
+  const tagCounts = (() => {
+    const m = new Map<string, number>();
+    for (const t of base) for (const g of t.tags ?? []) m.set(g, (m.get(g) ?? 0) + 1);
+    return [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  })();
+  const allTags = [...new Set(tasks.flatMap((t) => t.tags ?? []))].sort();
+  const activeTag = tagFilter && tagCounts.some(([g]) => g === tagFilter) ? tagFilter : null;
+  const q = query.trim().toLowerCase();
+  const items = base
+    .filter((t) => !activeTag || (t.tags ?? []).includes(activeTag))
+    .filter((t) => `${t.title} ${(t.tags ?? []).join(" ")}`.toLowerCase().includes(q))
+    .sort((a, b) =>
+      view === "done"
+        ? (b.done_at ?? "").localeCompare(a.done_at ?? "")
+        : (a.due_at ?? "9999").localeCompare(b.due_at ?? "9999") || b.priority - a.priority || b.created_at.localeCompare(a.created_at)
+    );
+
   async function add(e: FormEvent) {
     e.preventDefault();
-    const t = title.trim();
-    if (!t) return;
+    const p = parseQuick(title, lists);
+    if (!p.title) return;
     setTitle("");
-    const listId = view.startsWith("list:") ? view.slice(5) : null;
-    const fields = { title: t, list_id: listId, due_at: view === "today" ? today() : null };
+    const fields = {
+      title: p.title,
+      list_id: p.listId ?? currentList?.id ?? null,
+      due_at: p.due_at ?? (view === "today" ? t0 : null),
+      priority: p.priority,
+      tags: activeTag && !p.tags.includes(activeTag) ? [...p.tags, activeTag] : p.tags,
+      recurrence: p.recurrence,
+    };
     const tempId = crypto.randomUUID();
-    const temp: Task = { id: tempId, done: false, done_at: null, created_at: new Date().toISOString(), priority: 0, ...fields };
-    setTasks((p) => [temp, ...p]);
-    const { data, error } = await supabase.from("tasks").insert(fields).select(COLS).single();
+    const temp: Task = { id: tempId, done: false, done_at: null, created_at: new Date().toISOString(), ...fields };
+    setTasks((prev) => [temp, ...prev]);
+    const { data, error } = await supabase.from("tasks").insert(fields).select(TASK_COLS).single();
     if (error) {
-      setTasks((p) => p.filter((x) => x.id !== tempId));
+      setTasks((prev) => prev.filter((x) => x.id !== tempId));
       setError(error.message);
     } else {
-      setTasks((p) => p.map((x) => (x.id === tempId ? (data as Task) : x)));
+      const row = data as unknown as Task;
+      setTasks((prev) =>
+        prev.some((x) => x.id === tempId) ? prev.map((x) => (x.id === tempId ? row : x)) : prev.some((x) => x.id === row.id) ? prev : [row, ...prev]
+      );
     }
   }
 
   async function patch(task: Task, changes: Partial<Task>) {
-    setTasks((p) => p.map((x) => (x.id === task.id ? { ...x, ...changes } : x)));
+    setTasks((prev) => prev.map((x) => (x.id === task.id ? { ...x, ...changes } : x)));
     const { error } = await supabase.from("tasks").update(changes).eq("id", task.id);
     if (error) {
-      setTasks((p) => p.map((x) => (x.id === task.id ? task : x)));
+      setTasks((prev) => prev.map((x) => (x.id === task.id ? task : x)));
       setError(error.message);
     }
   }
 
-  const toggle = (t: Task) => patch(t, { done: !t.done, done_at: t.done ? null : new Date().toISOString() });
-
-  async function remove(task: Task) {
-    setTasks((p) => p.filter((x) => x.id !== task.id));
-    const { error } = await supabase.from("tasks").delete().eq("id", task.id);
-    if (error) {
-      setTasks((p) => [task, ...p]);
-      setError(error.message);
+  function toggle(t: Task) {
+    // Tarefa recorrente: em vez de concluir, passa para a próxima data
+    if (!t.done && t.recurrence && t.due_at) {
+      const next = nextDue(t.due_at, t.recurrence);
+      patch(t, { due_at: next });
+      toast(`${RECURRENCE_LABEL[t.recurrence] ?? "Repete"}: próxima em ${fmt(next)}`, { onUndo: () => patch(t, { due_at: t.due_at }) });
+      return;
     }
+    patch(t, { done: !t.done, done_at: t.done ? null : new Date().toISOString() });
+  }
+
+  function remove(task: Task) {
+    hide(task.id);
+    toast("Tarefa excluída", {
+      onUndo: () => unhide(task.id),
+      onCommit: async () => {
+        const { error } = await supabase.from("tasks").delete().eq("id", task.id);
+        if (error) setError(error.message);
+        else setTasks((prev) => prev.filter((x) => x.id !== task.id));
+        unhide(task.id);
+      },
+    });
   }
 
   function saveEdit(task: Task) {
@@ -109,48 +140,139 @@ export default function Tasks({ view, lists }: { view: string; lists: List[] }) 
     if (e.key === "Escape") setEditingId(null);
   }
 
-  // Filtro por visão + busca
-  const t0 = today();
-  const q = query.trim().toLowerCase();
-  let items = tasks.filter((t) => t.title.toLowerCase().includes(q));
-  if (view === "done") {
-    items = items.filter((t) => t.done).sort((a, b) => (b.done_at ?? "").localeCompare(a.done_at ?? ""));
-  } else {
-    items = items.filter((t) => !t.done);
-    if (view === "today") items = items.filter((t) => t.due_at && t.due_at <= t0);
-    else if (view === "upcoming") items = items.filter((t) => t.due_at && t.due_at > t0);
-    else if (view.startsWith("list:")) items = items.filter((t) => t.list_id === view.slice(5));
-    items.sort(
-      (a, b) =>
-        (a.due_at ?? "9999").localeCompare(b.due_at ?? "9999") ||
-        b.priority - a.priority ||
-        b.created_at.localeCompare(a.created_at)
+  function renderTask(t: Task) {
+    const overdue = !t.done && t.due_at !== null && t.due_at < t0;
+    const li = lists.findIndex((l) => l.id === t.list_id);
+    const color = li >= 0 ? listColor(lists[li], li) : "var(--muted)";
+    const ln = li >= 0 ? lists[li].name : undefined;
+    return (
+      <li key={t.id} className={t.done ? "done" : ""} style={cv(color)}>
+        <div className="row">
+          <input type="checkbox" checked={t.done} onChange={() => toggle(t)} aria-label={`Concluir ${t.title}`} />
+          {editingId === t.id ? (
+            <input className="edit" autoFocus value={editText} onChange={(e) => setEditText(e.target.value)} onKeyDown={(e) => onEditKey(e, t)} onBlur={() => saveEdit(t)} />
+          ) : (
+            <span className="title" onDoubleClick={() => { setEditingId(t.id); setEditText(t.title); }} title="Clique duas vezes para editar">
+              {t.title}
+            </span>
+          )}
+          <span className="badges">
+            {t.priority > 0 && <span className={`badge p${t.priority}`}>{PRIORITY[t.priority]}</span>}
+            {t.due_at && <span className={`badge${overdue ? " late" : ""}`}>{overdue ? "Atrasada " : ""}{fmt(t.due_at)}</span>}
+            {t.recurrence && <span className="badge">{RECURRENCE_LABEL[t.recurrence] ?? t.recurrence}</span>}
+            {ln && !currentList && <span className="badge list">{ln}</span>}
+            {(t.tags ?? []).map((g) => (
+              <span key={g} className="badge">#{g}</span>
+            ))}
+          </span>
+          <button className="ghost" aria-expanded={openId === t.id} onClick={() => setOpenId(openId === t.id ? null : t.id)}>
+            Detalhes
+          </button>
+        </div>
+        {openId === t.id && (
+          <div className="details">
+            <div className="datefield">
+              <label>
+                Prazo
+                <input type="date" value={t.due_at ?? ""} onChange={(e) => patch(t, { due_at: e.target.value || null })} />
+              </label>
+              <div className="datequick">
+                <button type="button" className="chipbtn" onClick={() => patch(t, { due_at: today() })}>Hoje</button>
+                <button type="button" className="chipbtn" onClick={() => patch(t, { due_at: tomorrow() })}>Amanhã</button>
+                {t.due_at && <button type="button" className="chipbtn clear" onClick={() => patch(t, { due_at: null })}>Remover prazo</button>}
+              </div>
+            </div>
+            <label>
+              Prioridade
+              <select value={t.priority} onChange={(e) => patch(t, { priority: Number(e.target.value) })}>
+                {PRIORITY.map((p, i) => (
+                  <option key={i} value={i}>{p}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Repetir
+              <select
+                value={t.recurrence ?? ""}
+                onChange={(e) => {
+                  const v = e.target.value || null;
+                  patch(t, { recurrence: v, ...(v && !t.due_at ? { due_at: today() } : {}) });
+                }}
+              >
+                <option value="">Não repete</option>
+                {Object.entries(RECURRENCE_LABEL).map(([k, label]) => (
+                  <option key={k} value={k}>{label}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Lista
+              <select value={ln ? t.list_id ?? "" : ""} onChange={(e) => patch(t, { list_id: e.target.value || null })}>
+                <option value="">Sem lista</option>
+                {lists.map((l) => (
+                  <option key={l.id} value={l.id}>{l.name}</option>
+                ))}
+              </select>
+            </label>
+            <div className="tagsfield">
+              <span className="lbl">Etiquetas</span>
+              <TagInput tags={t.tags ?? []} onChange={(tags) => patch(t, { tags })} suggestions={allTags} listId={`tags-task-${t.id}`} />
+            </div>
+            <button className="ghost danger" onClick={() => remove(t)}>Excluir tarefa</button>
+          </div>
+        )}
+      </li>
     );
   }
 
-  const heading = TITLES[view] ?? lists.find((l) => `list:${l.id}` === view)?.name ?? "Tarefas";
-  const listName = (id: string | null) => lists.find((l) => l.id === id)?.name;
-  const listColor = (id: string | null) => {
-    const i = lists.findIndex((l) => l.id === id);
-    return i >= 0 ? lineVar(i) : "var(--muted)";
-  };
-  const hi = lists.findIndex((l) => `list:${l.id}` === view);
-  const headColor = hi >= 0 ? lineVar(hi) : "var(--ink)";
+  const heading = TITLES[view] ?? currentList?.name ?? "Tarefas";
+  const headColor = currentList ? listColor(currentList, listIdx) : "var(--ink)";
+  const hasPreview = title.trim() && (parsed.due_at || parsed.priority || parsed.listId || parsed.tags.length || parsed.recurrence);
+  const late = view === "today" ? items.filter((t) => (t.due_at ?? "") < t0) : [];
+  const rest = view === "today" ? items.filter((t) => (t.due_at ?? "") >= t0) : items;
 
   return (
     <section>
-      <h2 className="heading" style={cv(headColor)}>{heading}</h2>
+      <div className="headrow">
+        <h2 className="heading" style={cv(headColor)}>{heading}</h2>
+        {currentList && (
+          <button className="ghost" aria-expanded={editingList} onClick={() => setEditingList((v) => !v)}>Editar lista</button>
+        )}
+      </div>
+      {editingList && currentList && <ListEditor key={currentList.id} list={currentList} index={listIdx} onClose={() => setEditingList(false)} />}
 
       <form className="quick" onSubmit={add}>
-        <input ref={inputRef} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Nova tarefa (atalho: n)" aria-label="Nova tarefa" />
+        <input ref={inputRef} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Nova tarefa (ex.: pagar luz amanhã #casa !alta)" aria-label="Nova tarefa" enterKeyHint="done" />
         <button className="primary">Adicionar</button>
       </form>
+      {hasPreview && (
+        <div className="preview" aria-live="polite">
+          {parsed.due_at && <span className="chip static">Prazo: {describeDate(parsed.due_at)}</span>}
+          {parsed.recurrence && <span className="chip static">{RECURRENCE_LABEL[parsed.recurrence]}</span>}
+          {parsed.priority > 0 && <span className="chip static">Prioridade: {PRIORITY[parsed.priority]}</span>}
+          {parsed.listId && <span className="chip static">Lista: {lists.find((l) => l.id === parsed.listId)?.name}</span>}
+          {parsed.tags.map((g) => (
+            <span key={g} className="chip static">#{g}</span>
+          ))}
+        </div>
+      )}
 
       <input className="search" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar tarefas" aria-label="Buscar tarefas" />
 
-      {error && (
+      {tagCounts.length > 0 && (
+        <div className="tagbar" role="group" aria-label="Filtrar por etiqueta">
+          <button className="tagchip" aria-pressed={activeTag === null} onClick={() => setTagFilter(null)}>Todas</button>
+          {tagCounts.map(([g, c]) => (
+            <button key={g} className="tagchip" aria-pressed={activeTag === g} onClick={() => setTagFilter(activeTag === g ? null : g)}>
+              #{g} <span>{c}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {(error || loadError) && (
         <p className="error" role="alert">
-          {error} <button className="ghost" onClick={() => setError(null)}>Fechar</button>
+          {error ?? loadError} <button className="ghost" onClick={() => setError(null)}>Fechar</button>
         </p>
       )}
 
@@ -158,72 +280,19 @@ export default function Tasks({ view, lists }: { view: string; lists: List[] }) 
         <p className="empty">Carregando…</p>
       ) : items.length === 0 ? (
         <p className="empty">
-          {q ? "Nenhuma tarefa encontrada." : view === "today" ? "Nada para hoje. Defina um prazo nas tarefas ou adicione uma aqui." : "Nenhuma tarefa aqui."}
+          {q || activeTag ? "Nenhuma tarefa encontrada." : view === "today" ? "Nada para hoje. Defina um prazo nas tarefas ou adicione uma aqui." : "Nenhuma tarefa aqui."}
         </p>
       ) : (
-        <ul className="list">
-          {items.map((t) => {
-            const overdue = !t.done && t.due_at !== null && t.due_at < t0;
-            const ln = listName(t.list_id);
-            return (
-              <li key={t.id} className={t.done ? "done" : ""} style={cv(listColor(t.list_id))}>
-                <div className="row">
-                  <input type="checkbox" checked={t.done} onChange={() => toggle(t)} aria-label={`Concluir ${t.title}`} />
-                  {editingId === t.id ? (
-                    <input className="edit" autoFocus value={editText} onChange={(e) => setEditText(e.target.value)} onKeyDown={(e) => onEditKey(e, t)} onBlur={() => saveEdit(t)} />
-                  ) : (
-                    <span className="title" onDoubleClick={() => { setEditingId(t.id); setEditText(t.title); }} title="Clique duas vezes para editar">
-                      {t.title}
-                    </span>
-                  )}
-                  <span className="badges">
-                    {t.priority > 0 && <span className={`badge p${t.priority}`}>{PRIORITY[t.priority]}</span>}
-                    {t.due_at && <span className={`badge${overdue ? " late" : ""}`}>{overdue ? "Atrasada " : ""}{fmt(t.due_at)}</span>}
-                    {ln && view !== `list:${t.list_id}` && <span className="badge list">{ln}</span>}
-                  </span>
-                  <button className="ghost" aria-expanded={openId === t.id} onClick={() => setOpenId(openId === t.id ? null : t.id)}>
-                    Detalhes
-                  </button>
-                </div>
-                {openId === t.id && (
-                  <div className="details">
-                    <div className="datefield">
-                      <label>
-                        Prazo
-                        <input type="date" value={t.due_at ?? ""} onChange={(e) => patch(t, { due_at: e.target.value || null })} />
-                      </label>
-                      <div className="datequick">
-                        <button type="button" className="chipbtn" onClick={() => patch(t, { due_at: today() })}>Hoje</button>
-                        <button type="button" className="chipbtn" onClick={() => patch(t, { due_at: tomorrow() })}>Amanhã</button>
-                        {t.due_at && (
-                          <button type="button" className="chipbtn clear" onClick={() => patch(t, { due_at: null })}>Remover prazo</button>
-                        )}
-                      </div>
-                    </div>
-                    <label>
-                      Prioridade
-                      <select value={t.priority} onChange={(e) => patch(t, { priority: Number(e.target.value) })}>
-                        {PRIORITY.map((p, i) => (
-                          <option key={i} value={i}>{p}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      Lista
-                      <select value={ln ? t.list_id ?? "" : ""} onChange={(e) => patch(t, { list_id: e.target.value || null })}>
-                        <option value="">Sem lista</option>
-                        {lists.map((l) => (
-                          <option key={l.id} value={l.id}>{l.name}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <button className="ghost danger" onClick={() => remove(t)}>Excluir tarefa</button>
-                  </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+        <>
+          {late.length > 0 && (
+            <>
+              <h3 className="group-label late">Atrasadas ({late.length})</h3>
+              <ul className="list">{late.map(renderTask)}</ul>
+              {rest.length > 0 && <h3 className="group-label">Hoje</h3>}
+            </>
+          )}
+          {rest.length > 0 && <ul className="list">{rest.map(renderTask)}</ul>}
+        </>
       )}
     </section>
   );
