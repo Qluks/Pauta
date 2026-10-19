@@ -5,6 +5,8 @@ export type Task = {
   done_at: string | null;
   created_at: string;
   due_at: string | null; // "YYYY-MM-DD"
+  due_time: string | null; // "HH:MM:SS" (horário do lembrete)
+  notified_at?: string | null; // quando o lembrete foi enviado
   priority: number; // 0 nenhuma, 1 baixa, 2 média, 3 alta
   list_id: string | null;
   tags: string[];

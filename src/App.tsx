@@ -7,6 +7,7 @@ import Tasks from "./Tasks";
 import Notes from "./Notes";
 import { DataProvider, useData } from "./data";
 import { ToastProvider } from "./Toast";
+import { syncPush } from "./push";
 
 function Main({ onSignOut }: { onSignOut: () => void }) {
   const { lists, loading } = useData();
@@ -34,6 +35,20 @@ function Main({ onSignOut }: { onSignOut: () => void }) {
   useEffect(() => {
     if (!loading && view.startsWith("list:") && !lists.some((l) => `list:${l.id}` === view)) setView("all");
   }, [loading, lists, view]);
+
+  // Toque numa notificação: o service worker pede para abrir uma tela
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => {
+      if (e.data?.type === "open-view" && typeof e.data.view === "string") setView(e.data.view);
+    };
+    navigator.serviceWorker?.addEventListener("message", onMsg);
+    return () => navigator.serviceWorker?.removeEventListener("message", onMsg);
+  }, []);
+
+  // Mantém o fuso horário do aparelho atualizado para os lembretes
+  useEffect(() => {
+    syncPush();
+  }, []);
 
   return (
     <div className="shell">

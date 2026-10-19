@@ -33,3 +33,9 @@ export function normalizeUrl(raw: string): string | null {
     return null;
   }
 }
+
+// O horário do lembrete (09:00 quando a tarefa não tem horário) já passou?
+export function reminderPassed(due: string | null, time: string | null) {
+  if (!due) return false;
+  return new Date(`${due}T${(time ?? "09:00").slice(0, 5)}:00`).getTime() <= Date.now();
+}

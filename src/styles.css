@@ -236,3 +236,12 @@ input, select, textarea { font-size: 16px; } /* 16px ou mais evita o zoom autom√
 .clitem.done span { color: var(--muted); text-decoration: line-through; }
 .clprog { color: var(--muted); font: 500 0.78rem var(--font-ui); }
 .cl-add { padding-left: 0; }
+
+/* ---- Pacote 3: lembretes ---- */
+.modal-backdrop { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 16px; background: rgb(8 12 20 / 0.6); }
+.modal { display: grid; gap: 12px; width: min(440px, 100%); max-height: 90dvh; overflow-y: auto; padding: 20px; border: 1.5px solid var(--rule); border-radius: 12px; background: var(--paper); }
+.modal h2 { margin: 0; font: 800 1.4rem var(--font-ui); }
+.modal p { margin: 0; font: 400 1.02rem/1.45 var(--font-text); }
+.modal code { font-size: 0.85em; }
+.modal-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.modal .ghost { justify-self: start; margin-left: -8px; }

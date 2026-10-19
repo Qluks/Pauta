@@ -11,6 +11,7 @@ export const RECURRENCE_LABEL: Record<string, string> = {
 export type Parsed = {
   title: string;
   due_at: string | null;
+  due_time: string | null; // "HH:MM"
   priority: number;
   listId: string | null;
   tags: string[];
@@ -45,7 +46,7 @@ function take(text: string, pattern: string) {
 }
 
 export function parseQuick(input: string, lists: List[], now = new Date()): Parsed {
-  const out: Parsed = { title: "", due_at: null, priority: 0, listId: null, tags: [], recurrence: null };
+  const out: Parsed = { title: "", due_at: null, due_time: null, priority: 0, listId: null, tags: [], recurrence: null };
   const base = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const addDays = (n: number) => {
     const d = new Date(base);
@@ -138,6 +139,27 @@ export function parseQuick(input: string, lists: List[], now = new Date()): Pars
     }
     return d;
   });
+
+  // Horário: "às 15h", "15:30", "9h30", "meio-dia"
+  const setTime = (h: number, min: number) => {
+    if (h > 23 || min > 59) return false;
+    out.due_time = `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+    return true;
+  };
+  const tryTime = (pattern: string, fn: (m: RegExpExecArray) => boolean) => {
+    if (out.due_time) return;
+    const r = take(text, pattern);
+    if (r.m && fn(r.m)) text = r.text;
+  };
+  tryTime("(?:[àa]s\\s+)?(\\d{1,2})[:h](\\d{2})", (m) => setTime(Number(m[2]), Number(m[3])));
+  tryTime("(?:[àa]s\\s+)?(\\d{1,2})h", (m) => setTime(Number(m[2]), 0));
+  tryTime("às\\s+(\\d{1,2})", (m) => setTime(Number(m[2]), 0));
+  tryTime("meio[- ]dia", () => setTime(12, 0));
+  // Só horário, sem data: hoje se ainda não passou, senão amanhã
+  if (out.due_time && !out.due_at) {
+    const nowHM = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    out.due_at = isoDate(out.due_time > nowHM ? base : addDays(1));
+  }
 
   if (out.recurrence && !out.due_at) {
     out.due_at = isoDate(out.recurrence === "weekdays" ? nextBusinessDay(base, true) : base);

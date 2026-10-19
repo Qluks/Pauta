@@ -5,6 +5,7 @@ import Mark from "./Mark";
 import { cv, listColor } from "./colors";
 import { LIST_COLS, useData } from "./data";
 import { isDormant, today } from "./util";
+import NotificationsPanel from "./Notifications";
 
 type Props = { view: string; setView: (v: string) => void; onSignOut: () => void };
 
@@ -21,6 +22,7 @@ export default function Sidebar({ view, setView, onSignOut }: Props) {
   const { tasks, notes, lists, attachments, setLists } = useData();
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [showReminders, setShowReminders] = useState(false);
 
   const t0 = today();
   const pending = tasks.filter((t) => !t.done && !isDormant(t));
@@ -72,6 +74,7 @@ export default function Sidebar({ view, setView, onSignOut }: Props) {
       <div className="side-head">
         <h1 className="brand"><Mark /> Pauta</h1>
         <div className="side-actions">
+          <button className="ghost" onClick={() => setShowReminders(true)}>Lembretes</button>
           <button className="ghost" onClick={exportData} title="Baixar uma cópia dos seus dados (JSON)">Exportar</button>
           <button className="ghost" onClick={onSignOut}>Sair</button>
         </div>
@@ -110,6 +113,7 @@ export default function Sidebar({ view, setView, onSignOut }: Props) {
         </form>
       </div>
       {error && <p className="error">{error}</p>}
+      {showReminders && <NotificationsPanel onClose={() => setShowReminders(false)} />}
     </nav>
   );
 }

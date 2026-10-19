@@ -4,7 +4,7 @@ import type { Task } from "./types";
 import { cv, listColor } from "./colors";
 import { TASK_COLS, useData } from "./data";
 import { useToast } from "./Toast";
-import { describeDate, fmt, isDormant, today, tomorrow } from "./util";
+import { describeDate, fmt, isDormant, reminderPassed, today, tomorrow } from "./util";
 import { nextDue, parseQuick, RECURRENCE_LABEL, snoozeUntil } from "./parse";
 import TagInput from "./Tags";
 import ListEditor from "./ListEditor";
@@ -69,7 +69,7 @@ export default function Tasks({ view }: { view: string }) {
     .sort((a, b) =>
       view === "done"
         ? (b.done_at ?? "").localeCompare(a.done_at ?? "")
-        : (a.due_at ?? "9999").localeCompare(b.due_at ?? "9999") || b.priority - a.priority || b.created_at.localeCompare(a.created_at)
+        : (a.due_at ?? "9999").localeCompare(b.due_at ?? "9999") || (a.due_time ?? "99:99").localeCompare(b.due_time ?? "99:99") || b.priority - a.priority || b.created_at.localeCompare(a.created_at)
     );
 
   async function add(e: FormEvent) {
@@ -77,10 +77,13 @@ export default function Tasks({ view }: { view: string }) {
     const p = parseQuick(title, lists);
     if (!p.title) return;
     setTitle("");
+    const dueAt = p.due_at ?? (view === "today" ? t0 : null);
     const fields = {
       title: p.title,
       list_id: p.listId ?? currentList?.id ?? null,
-      due_at: p.due_at ?? (view === "today" ? t0 : null),
+      due_at: dueAt,
+      due_time: dueAt ? p.due_time : null,
+      notified_at: reminderPassed(dueAt, p.due_time) ? new Date().toISOString() : null,
       priority: p.priority,
       tags: activeTag && !p.tags.includes(activeTag) ? [...p.tags, activeTag] : p.tags,
       recurrence: p.recurrence,
@@ -99,6 +102,12 @@ export default function Tasks({ view }: { view: string }) {
   }
 
   async function patch(task: Task, changes: Partial<Task>) {
+    // Mudou prazo ou horário: o lembrete vale de novo (a menos que o horário já tenha passado)
+    if ("due_at" in changes || "due_time" in changes) {
+      const due = "due_at" in changes ? changes.due_at ?? null : task.due_at;
+      const time = "due_time" in changes ? changes.due_time ?? null : task.due_time;
+      changes = { ...changes, notified_at: reminderPassed(due, time) ? new Date().toISOString() : null };
+    }
     setTasks((prev) => prev.map((x) => (x.id === task.id ? { ...x, ...changes } : x)));
     const { error } = await supabase.from("tasks").update(changes).eq("id", task.id);
     if (error) {
@@ -173,7 +182,7 @@ export default function Tasks({ view }: { view: string }) {
           <span className="badges">
             {t.priority > 0 && <span className={`badge p${t.priority}`}>{PRIORITY[t.priority]}</span>}
             {dormant && t.snoozed_until && <span className="badge">Volta {t.snoozed_until === tomorrow() ? "amanhã" : "em " + fmt(t.snoozed_until)}</span>}
-            {t.due_at && <span className={`badge${overdue ? " late" : ""}`}>{overdue ? "Atrasada " : ""}{fmt(t.due_at)}</span>}
+            {t.due_at && <span className={`badge${overdue ? " late" : ""}`}>{overdue ? "Atrasada " : ""}{fmt(t.due_at)}{t.due_time ? ` ${t.due_time.slice(0, 5)}` : ""}</span>}
             {t.recurrence && <span className="badge">{RECURRENCE_LABEL[t.recurrence] ?? t.recurrence}</span>}
             {ln && !currentList && <span className="badge list">{ln}</span>}
             {(attCount.get(t.id) ?? 0) > 0 && (
@@ -196,10 +205,15 @@ export default function Tasks({ view }: { view: string }) {
                 Prazo
                 <input type="date" value={t.due_at ?? ""} onChange={(e) => patch(t, { due_at: e.target.value || null })} />
               </label>
+              <label>
+                Horário (para o lembrete)
+                <input type="time" value={t.due_time?.slice(0, 5) ?? ""} onChange={(e) => patch(t, { due_time: e.target.value || null, ...(e.target.value && !t.due_at ? { due_at: today() } : {}) })} />
+              </label>
               <div className="datequick">
                 <button type="button" className="chipbtn" onClick={() => patch(t, { due_at: today() })}>Hoje</button>
                 <button type="button" className="chipbtn" onClick={() => patch(t, { due_at: tomorrow() })}>Amanhã</button>
-                {t.due_at && <button type="button" className="chipbtn clear" onClick={() => patch(t, { due_at: null })}>Remover prazo</button>}
+                {t.due_at && <button type="button" className="chipbtn clear" onClick={() => patch(t, { due_at: null, due_time: null })}>Remover prazo</button>}
+                {t.due_time && <button type="button" className="chipbtn clear" onClick={() => patch(t, { due_time: null })}>Remover horário</button>}
               </div>
             </div>
             <label>
@@ -271,7 +285,7 @@ export default function Tasks({ view }: { view: string }) {
       </form>
       {hasPreview && (
         <div className="preview" aria-live="polite">
-          {parsed.due_at && <span className="chip static">Prazo: {describeDate(parsed.due_at)}</span>}
+          {parsed.due_at && <span className="chip static">Prazo: {describeDate(parsed.due_at)}{parsed.due_time ? ` às ${parsed.due_time}` : ""}</span>}
           {parsed.recurrence && <span className="chip static">{RECURRENCE_LABEL[parsed.recurrence]}</span>}
           {parsed.priority > 0 && <span className="chip static">Prioridade: {PRIORITY[parsed.priority]}</span>}
           {parsed.listId && <span className="chip static">Lista: {lists.find((l) => l.id === parsed.listId)?.name}</span>}

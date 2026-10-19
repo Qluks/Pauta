@@ -6,7 +6,11 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      strategies: "injectManifest", // service worker próprio (sw/sw.ts), necessário para as notificações
+      srcDir: "sw",
+      filename: "sw.ts",
       registerType: "autoUpdate",
+      injectManifest: { globPatterns: ["**/*.{js,css,html,svg,png}"] },
       includeAssets: ["favicon.svg", "apple-touch-icon.png"],
       manifest: {
         name: "Pauta",
@@ -22,27 +26,6 @@ export default defineConfig({
           { src: "pwa-192.png", sizes: "192x192", type: "image/png" },
           { src: "pwa-512.png", sizes: "512x512", type: "image/png" },
           { src: "pwa-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
-        ],
-      },
-      workbox: {
-        globPatterns: ["**/*.{js,css,html,svg,png}"],
-        navigateFallback: "/index.html",
-        // Só o "casco" do app e as fontes ficam em cache. Os dados (Supabase) sempre vêm da rede.
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-            handler: "StaleWhileRevalidate",
-            options: { cacheName: "google-fonts-css" },
-          },
-          {
-            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
-            handler: "CacheFirst",
-            options: {
-              cacheName: "google-fonts-files",
-              expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 },
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
         ],
       },
     }),
