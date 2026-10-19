@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { currentSubscription, disablePush, enablePush, hasKey, isIOS, isStandalone, pushSupported, testNotification } from "./push";
+import { currentSubscription, disablePush, enablePush, hasKey, isIOS, isStandalone, pushSupported, serverTest, testNotification } from "./push";
 
 type State = "loading" | "unsupported" | "install" | "nokey" | "blocked" | "off" | "on";
 
@@ -15,6 +15,7 @@ export default function NotificationsPanel({ onClose }: { onClose: () => void })
   const [state, setState] = useState<State>("loading");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
 
   const refresh = async () => setState(await computeState());
@@ -26,15 +27,17 @@ export default function NotificationsPanel({ onClose }: { onClose: () => void })
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  async function run(fn: () => Promise<void>) {
+  async function run(fn: () => Promise<string | void>) {
     setBusy(true);
     setMsg(null);
+    setInfo(null);
     try {
-      await fn();
+      const res = await fn();
+      if (res) setInfo(res);
     } catch (e) {
       const text = e instanceof Error ? e.message : String(e);
       if (text === "denied") setMsg("A permissão não foi concedida. Se mudar de ideia, libere nas configurações do navegador.");
-      else if ("brave" in navigator) setMsg("O Brave bloqueia notificações por padrão. Abra brave://settings/privacy, ative “Usar serviços do Google para mensagens push” e tente de novo. Detalhe: " + text);
+      else if ("brave" in navigator && /registration failed|push service|abort/i.test(text)) setMsg("O Brave bloqueia notificações por padrão. Abra brave://settings/privacy, ative “Usar serviços do Google para mensagens push” e tente de novo. Detalhe: " + text);
       else setMsg(text);
     }
     await refresh();
@@ -64,11 +67,13 @@ export default function NotificationsPanel({ onClose }: { onClose: () => void })
             <p>Ativadas neste aparelho. Tarefas com prazo e horário avisam na hora marcada. Sem horário, o aviso sai às 09:00 do dia do prazo.</p>
             <div className="modal-actions">
               <button className="chipbtn" disabled={busy} onClick={() => run(testNotification)}>Enviar teste</button>
+              <button className="chipbtn" disabled={busy} onClick={() => run(serverTest)}>Testar pelo servidor</button>
               <button className="chipbtn clear" disabled={busy} onClick={() => run(disablePush)}>Desativar neste aparelho</button>
             </div>
           </>
         )}
         {msg && <p className="error" role="alert">{msg}</p>}
+        {info && <p role="status">{info}</p>}
 
         <button ref={closeRef} className="ghost" onClick={onClose}>Fechar</button>
       </div>

@@ -75,3 +75,28 @@ export async function testNotification() {
     tag: "teste",
   });
 }
+
+// Pede ao servidor (função send-reminders) para enviar uma notificação de teste a todos os aparelhos da conta
+export async function serverTest(): Promise<string> {
+  const { data, error } = await supabase.functions.invoke("send-reminders", { body: { test: true } });
+  if (error) {
+    let detail = error.message;
+    try {
+      const res = (error as unknown as { context?: Response }).context;
+      if (res) {
+        const text = await res.text();
+        try {
+          detail = (JSON.parse(text) as { error?: string }).error ?? text;
+        } catch {
+          detail = text || detail;
+        }
+      }
+    } catch {
+      /* usa a mensagem padrão */
+    }
+    throw new Error(`A função send-reminders respondeu com erro: ${detail}`);
+  }
+  const r = data as { devices: number; sent: number; errors: string[] };
+  if (r.sent === 0) throw new Error(`A função respondeu, mas o envio falhou. ${r.errors.join(" | ")}`);
+  return `Enviado pelo servidor para ${r.sent} de ${r.devices} aparelho(s).${r.errors.length ? " Erros: " + r.errors.join(" | ") : ""}`;
+}
