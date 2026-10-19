@@ -18,6 +18,16 @@ function keyToBytes(b64: string) {
 
 const registration = () => navigator.serviceWorker.ready;
 
+// A inscrição do aparelho foi feita com a chave pública atual? (muda se as chaves forem trocadas)
+export function matchesKey(sub: PushSubscription) {
+  if (!KEY) return false;
+  const cur = sub.options.applicationServerKey;
+  if (!cur) return false;
+  const have = new Uint8Array(cur);
+  const want = keyToBytes(KEY);
+  return have.length === want.length && have.every((b, i) => b === want[i]);
+}
+
 export async function currentSubscription() {
   if (!pushSupported()) return null;
   return (await registration()).pushManager.getSubscription();
@@ -44,6 +54,12 @@ export async function enablePush() {
   if (perm !== "granted") throw new Error("denied");
   const reg = await registration();
   let sub = await reg.pushManager.getSubscription();
+  if (sub && !matchesKey(sub)) {
+    // Inscrição antiga, de outra chave: apaga e refaz com a chave atual
+    await supabase.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
+    await sub.unsubscribe();
+    sub = null;
+  }
   if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyToBytes(KEY) });
   await saveSubscription(sub);
 }
@@ -60,7 +76,7 @@ export async function syncPush() {
   try {
     if (!pushSupported() || Notification.permission !== "granted") return;
     const sub = await currentSubscription();
-    if (sub) await saveSubscription(sub);
+    if (sub && matchesKey(sub)) await saveSubscription(sub);
   } catch {
     /* sem problema: tenta de novo na próxima abertura */
   }

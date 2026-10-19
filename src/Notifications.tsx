@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { currentSubscription, disablePush, enablePush, hasKey, isIOS, isStandalone, pushSupported, serverTest, testNotification } from "./push";
+import { currentSubscription, disablePush, enablePush, hasKey, isIOS, isStandalone, matchesKey, pushSupported, serverTest, testNotification } from "./push";
 
 type State = "loading" | "unsupported" | "install" | "nokey" | "blocked" | "off" | "on";
 
@@ -8,7 +8,7 @@ async function computeState(): Promise<State> {
   if (!pushSupported()) return isIOS() && !isStandalone() ? "install" : "unsupported";
   if (Notification.permission === "denied") return "blocked";
   const sub = Notification.permission === "granted" ? await currentSubscription() : null;
-  return sub ? "on" : "off";
+  return sub && matchesKey(sub) ? "on" : "off"; // inscrição de chave antiga aparece como "desativada"
 }
 
 export default function NotificationsPanel({ onClose }: { onClose: () => void }) {
