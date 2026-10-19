@@ -20,8 +20,24 @@ export type Note = {
   body: string;
   color: string | null; // índice da cor da linha ("0" a "5") ou null
   tags: string[];
+  checklist: ChecklistItem[];
   pinned: boolean;
   archived: boolean;
   created_at: string;
   updated_at: string;
+};
+
+export type ChecklistItem = { id: string; text: string; done: boolean };
+
+export type Attachment = {
+  id: string;
+  task_id: string | null;
+  note_id: string | null;
+  kind: "link" | "file";
+  title: string;
+  url: string | null; // links
+  path: string | null; // arquivos: caminho no Storage
+  mime: string | null;
+  size: number | null;
+  created_at: string;
 };

@@ -20,3 +20,16 @@ export const sameTags = (a: string[], b: string[]) => a.length === b.length && a
 
 // Tarefa recorrente já concluída que ainda "dorme" até chegar perto do próximo prazo
 export const isDormant = (t: Task) => !t.done && !!t.snoozed_until && t.snoozed_until > today();
+
+// Aceita "exemplo.com/pagina" ou "https://..."; só permite http e https
+export function normalizeUrl(raw: string): string | null {
+  let s = raw.trim();
+  if (!s) return null;
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(s)) s = "https://" + s;
+  try {
+    const u = new URL(s);
+    return u.protocol === "http:" || u.protocol === "https:" ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}

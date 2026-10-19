@@ -8,12 +8,13 @@ import { describeDate, fmt, isDormant, today, tomorrow } from "./util";
 import { nextDue, parseQuick, RECURRENCE_LABEL, snoozeUntil } from "./parse";
 import TagInput from "./Tags";
 import ListEditor from "./ListEditor";
+import Attachments from "./Attachments";
 
 const PRIORITY = ["Sem prioridade", "Baixa", "Média", "Alta"];
 const TITLES: Record<string, string> = { today: "Hoje", upcoming: "Próximas", all: "Todas", done: "Concluídas" };
 
 export default function Tasks({ view }: { view: string }) {
-  const { tasks, setTasks, lists, loading, loadError, hide, unhide } = useData();
+  const { tasks, setTasks, lists, attachments, setAttachments, purgeFiles, loading, loadError, hide, unhide } = useData();
   const toast = useToast();
   const [title, setTitle] = useState("");
   const [query, setQuery] = useState("");
@@ -27,6 +28,8 @@ export default function Tasks({ view }: { view: string }) {
 
   const t0 = today();
   const parsed = useMemo(() => parseQuick(title, lists), [title, lists]);
+  const attCount = new Map<string, number>();
+  for (const a of attachments) if (a.task_id) attCount.set(a.task_id, (attCount.get(a.task_id) ?? 0) + 1);
   const listIdx = view.startsWith("list:") ? lists.findIndex((l) => `list:${l.id}` === view) : -1;
   const currentList = listIdx >= 0 ? lists[listIdx] : undefined;
 
@@ -128,9 +131,13 @@ export default function Tasks({ view }: { view: string }) {
     toast("Tarefa excluída", {
       onUndo: () => unhide(task.id),
       onCommit: async () => {
+        await purgeFiles({ taskId: task.id });
         const { error } = await supabase.from("tasks").delete().eq("id", task.id);
         if (error) setError(error.message);
-        else setTasks((prev) => prev.filter((x) => x.id !== task.id));
+        else {
+          setTasks((prev) => prev.filter((x) => x.id !== task.id));
+          setAttachments((prev) => prev.filter((a) => a.task_id !== task.id));
+        }
         unhide(task.id);
       },
     });
@@ -169,6 +176,11 @@ export default function Tasks({ view }: { view: string }) {
             {t.due_at && <span className={`badge${overdue ? " late" : ""}`}>{overdue ? "Atrasada " : ""}{fmt(t.due_at)}</span>}
             {t.recurrence && <span className="badge">{RECURRENCE_LABEL[t.recurrence] ?? t.recurrence}</span>}
             {ln && !currentList && <span className="badge list">{ln}</span>}
+            {(attCount.get(t.id) ?? 0) > 0 && (
+              <button type="button" className="badge btn" onClick={() => setOpenId(t.id)}>
+                {attCount.get(t.id)} {attCount.get(t.id) === 1 ? "anexo" : "anexos"}
+              </button>
+            )}
             {(t.tags ?? []).map((g) => (
               <span key={g} className="badge">#{g}</span>
             ))}
@@ -225,6 +237,10 @@ export default function Tasks({ view }: { view: string }) {
             <div className="tagsfield">
               <span className="lbl">Etiquetas</span>
               <TagInput tags={t.tags ?? []} onChange={(tags) => patch(t, { tags })} suggestions={allTags} listId={`tags-task-${t.id}`} />
+            </div>
+            <div className="tagsfield">
+              <span className="lbl">Anexos</span>
+              <Attachments taskId={t.id} />
             </div>
             <button className="ghost danger" onClick={() => remove(t)}>Excluir tarefa</button>
           </div>

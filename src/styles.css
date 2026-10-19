@@ -213,3 +213,26 @@ input, select, textarea { font-size: 16px; } /* 16px ou mais evita o zoom autom√
   .content { padding-bottom: 48px; }
 }
 @media (min-width: 1500px) { .notes { columns: 260px; } }
+
+/* ---- Pacote 2: anexos e checklist ---- */
+.attach { display: grid; gap: 8px; }
+.note .attach { margin: 2px 0 8px; }
+.attlist { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.attlist li { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.attname { min-width: 0; padding: 0; border: 0; background: none; color: var(--ink); font: 500 0.95rem var(--font-ui); text-align: left; text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; cursor: pointer; }
+.attmeta { flex: none; color: var(--muted); font-size: 0.8rem; }
+.attlist .ghost { margin-left: auto; padding: 2px 6px; }
+.attactions { display: flex; flex-wrap: wrap; gap: 6px; }
+.attform { display: grid; gap: 8px; max-width: 420px; }
+.attform input, .note .attform input { width: 100%; padding: 8px 10px; background: var(--paper); border: 1.5px solid var(--rule); border-radius: 8px; }
+.chipbtn:disabled { opacity: 0.5; cursor: default; }
+.badge.btn { cursor: pointer; }
+.checklist { display: grid; gap: 2px; margin: 0 0 8px; }
+.clrow { display: flex; align-items: center; gap: 8px; }
+.clrow input[type="checkbox"], .note .clitem input { flex: none; width: 18px; height: 18px; margin: 0; accent-color: var(--c, var(--ink)); }
+.note .cltext, .compose .cltext { flex: 1; min-width: 0; padding: 4px 0; background: transparent; border: 0; font: 400 1rem var(--font-text); }
+.clplus { width: 18px; color: var(--muted); text-align: center; }
+.clitem { display: flex; align-items: flex-start; gap: 8px; font: 400 1.02rem/1.4 var(--font-text); cursor: pointer; }
+.clitem.done span { color: var(--muted); text-decoration: line-through; }
+.clprog { color: var(--muted); font: 500 0.78rem var(--font-ui); }
+.cl-add { padding-left: 0; }

@@ -1,10 +1,11 @@
 import { createContext, Dispatch, ReactNode, SetStateAction, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
-import type { List, Note, Task } from "./types";
+import type { Attachment, List, Note, Task } from "./types";
 
 export const TASK_COLS = "id,title,done,done_at,created_at,due_at,priority,list_id,tags,recurrence,snoozed_until";
-export const NOTE_COLS = "id,title,body,color,tags,pinned,archived,created_at,updated_at";
+export const NOTE_COLS = "id,title,body,color,tags,checklist,pinned,archived,created_at,updated_at";
+export const ATT_COLS = "id,task_id,note_id,kind,title,url,path,mime,size,created_at";
 export const LIST_COLS = "id,name,color";
 
 type Data = {
@@ -14,6 +15,9 @@ type Data = {
   setLists: Dispatch<SetStateAction<List[]>>;
   notes: Note[];
   setNotes: Dispatch<SetStateAction<Note[]>>;
+  attachments: Attachment[];
+  setAttachments: Dispatch<SetStateAction<Attachment[]>>;
+  purgeFiles: (owner: { taskId?: string; noteId?: string }) => Promise<void>; // apaga do Storage os arquivos de uma tarefa/nota
   loading: boolean;
   loadError: string | null;
   reload: () => Promise<void>;
@@ -52,6 +56,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [rawTasks, setTasks] = useState<Task[]>([]);
   const [lists, setLists] = useState<List[]>([]);
   const [rawNotes, setNotes] = useState<Note[]>([]);
+  const [rawAttachments, setAttachments] = useState<Attachment[]>([]);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -59,10 +64,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const reload = useCallback(async () => {
     last.current = Date.now();
-    const [t, l, n] = await Promise.all([
+    const [t, l, n, a] = await Promise.all([
       supabase.from("tasks").select(TASK_COLS).order("created_at", { ascending: false }),
       supabase.from("lists").select(LIST_COLS).order("created_at"),
       supabase.from("notes").select(NOTE_COLS).order("updated_at", { ascending: false }),
+      supabase.from("attachments").select(ATT_COLS).order("created_at"),
     ]);
     const err = t.error ?? l.error ?? n.error;
     if (err) setLoadError(err.message);
@@ -71,6 +77,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setTasks(t.data as Task[]);
       setLists(l.data as List[]);
       setNotes(n.data as Note[]);
+      setAttachments(a.error ? [] : (a.data as Attachment[])); // sem a tabela de anexos o resto continua funcionando
     }
     setLoading(false);
   }, []);
@@ -104,6 +111,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, applyChange<Task>(setTasks, TASK_COLS))
       .on("postgres_changes", { event: "*", schema: "public", table: "lists" }, applyChange<List>(setLists, LIST_COLS, true))
       .on("postgres_changes", { event: "*", schema: "public", table: "notes" }, applyChange<Note>(setNotes, NOTE_COLS))
+      .on("postgres_changes", { event: "*", schema: "public", table: "attachments" }, applyChange<Attachment>(setAttachments, ATT_COLS, true))
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
           if (!first) reload(); // reconectou: busca o que passou enquanto estava fora
@@ -128,9 +136,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const tasks = useMemo(() => rawTasks.filter((t) => !hidden.has(t.id)), [rawTasks, hidden]);
   const notes = useMemo(() => rawNotes.filter((n) => !hidden.has(n.id)), [rawNotes, hidden]);
+  const attachments = useMemo(() => rawAttachments.filter((a) => !hidden.has(a.id)), [rawAttachments, hidden]);
+
+  const attRef = useRef<Attachment[]>([]);
+  attRef.current = rawAttachments;
+  const purgeFiles = useCallback(async (owner: { taskId?: string; noteId?: string }) => {
+    const paths = attRef.current
+      .filter((a) => a.kind === "file" && a.path && (owner.taskId ? a.task_id === owner.taskId : a.note_id === owner.noteId))
+      .map((a) => a.path as string);
+    if (paths.length) await supabase.storage.from("attachments").remove(paths);
+  }, []);
 
   return (
-    <Ctx.Provider value={{ tasks, setTasks, lists, setLists, notes, setNotes, loading, loadError, reload, hide, unhide }}>
+    <Ctx.Provider value={{ tasks, setTasks, lists, setLists, notes, setNotes, attachments, setAttachments, purgeFiles, loading, loadError, reload, hide, unhide }}>
       {children}
     </Ctx.Provider>
   );

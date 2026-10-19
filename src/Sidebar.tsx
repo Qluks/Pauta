@@ -18,7 +18,7 @@ const VIEWS: { id: string; label: string; gap?: boolean }[] = [
 ];
 
 export default function Sidebar({ view, setView, onSignOut }: Props) {
-  const { tasks, notes, lists, setLists } = useData();
+  const { tasks, notes, lists, attachments, setLists } = useData();
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -56,7 +56,7 @@ export default function Sidebar({ view, setView, onSignOut }: Props) {
   }
 
   function exportData() {
-    const json = JSON.stringify({ exportado_em: new Date().toISOString(), listas: lists, tarefas: tasks, notas: notes }, null, 2);
+    const json = JSON.stringify({ exportado_em: new Date().toISOString(), listas: lists, tarefas: tasks, notas: notes, anexos: attachments }, null, 2);
     const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
     const a = document.createElement("a");
     a.href = url;
