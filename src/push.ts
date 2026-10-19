@@ -80,6 +80,13 @@ export async function testNotification() {
 export async function serverTest(): Promise<string> {
   const { data, error } = await supabase.functions.invoke("send-reminders", { body: { test: true } });
   if (error) {
+    // Nem chegou a haver resposta: função não publicada, caiu ao iniciar ou resposta bloqueada pelo navegador
+    if (error.name === "FunctionsFetchError" || error.name === "FunctionsRelayError") {
+      throw new Error(
+        "Não houve resposta da função send-reminders. Confira se ela foi publicada com o código mais recente e veja o erro em Edge Functions > send-reminders > Logs. Detalhe: " +
+          error.message
+      );
+    }
     let detail = error.message;
     try {
       const res = (error as unknown as { context?: Response }).context;
@@ -94,7 +101,7 @@ export async function serverTest(): Promise<string> {
     } catch {
       /* usa a mensagem padrão */
     }
-    throw new Error(`A função send-reminders respondeu com erro: ${detail}`);
+    throw new Error(`Erro da função send-reminders: ${detail}`);
   }
   const r = data as { devices: number; sent: number; errors: string[] };
   if (r.sent === 0) throw new Error(`A função respondeu, mas o envio falhou. ${r.errors.join(" | ")}`);
