@@ -39,3 +39,28 @@ export function reminderPassed(due: string | null, time: string | null) {
   if (!due) return false;
   return new Date(`${due}T${(time ?? "09:00").slice(0, 5)}:00`).getTime() <= Date.now();
 }
+
+// ---- Agrupamento de "Próximas" ----
+export type Period = "tomorrow" | "week" | "next" | "later";
+export const PERIODS: { id: Period; label: string }[] = [
+  { id: "tomorrow", label: "Amanhã" },
+  { id: "week", label: "Esta semana" },
+  { id: "next", label: "Próxima semana" },
+  { id: "later", label: "Mais tarde" },
+];
+const plusDays = (d: Date, n: number) => {
+  const x = new Date(d);
+  x.setDate(x.getDate() + n);
+  return isoDate(x);
+};
+// Semana de segunda a domingo
+export function periodOf(due: string, now = new Date()): Period {
+  const toSunday = (7 - now.getDay()) % 7;
+  if (due === plusDays(now, 1)) return "tomorrow";
+  if (due <= plusDays(now, toSunday)) return "week";
+  if (due <= plusDays(now, toSunday + 7)) return "next";
+  return "later";
+}
+
+// Concluída hoje (no fuso do aparelho)?
+export const doneToday = (t: Task) => !!t.done_at && isoDate(new Date(t.done_at)) === today();

@@ -260,3 +260,110 @@ input, select, textarea { font-size: 16px; } /* 16px ou mais evita o zoom autom�
   -webkit-appearance: none; appearance: none; display: block; min-width: 0; max-width: 100%; min-height: 42px; text-align: left;
 }
 input[type="date"]::-webkit-date-and-time-value, input[type="time"]::-webkit-date-and-time-value { text-align: left; }
+
+/* ======== Pacote visual 1: movimento, linha do dia e acabamentos ======== */
+
+/* Papel: a grade esmaece nas bordas da tela */
+body { background-image: none; }
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+  -webkit-mask-image: radial-gradient(ellipse 85% 75% at 50% 25%, #000 35%, transparent 100%);
+  mask-image: radial-gradient(ellipse 85% 75% at 50% 25%, #000 35%, transparent 100%);
+}
+.count, .badge, .dl-count, .clprog, .tagchip span, .attmeta, .group-label, .group-plate { font-variant-numeric: tabular-nums; }
+
+/* Concluir: a parada "acende" (anel, check, riscado correndo) e a tarefa recolhe */
+.row input[type="checkbox"]:checked { background: var(--c, var(--muted)); }
+.row input[type="checkbox"]::after {
+  content: ""; position: absolute; left: 50%; top: 46%; width: 6px; height: 11px;
+  border: solid var(--on-ink); border-width: 0 2.5px 2.5px 0;
+  transform: translate(-50%, -55%) rotate(45deg) scale(0); transition: transform 0.2s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+.row input[type="checkbox"]:checked::after { transform: translate(-50%, -55%) rotate(45deg) scale(1); }
+.list .done .title { text-decoration: none; }
+.ttext {
+  background-image: linear-gradient(currentColor, currentColor); background-repeat: no-repeat; background-position: 0 58%; background-size: 0% 1.5px;
+  transition: background-size 0.35s ease; -webkit-box-decoration-break: clone; box-decoration-break: clone;
+}
+.done .ttext { background-size: 100% 1.5px; }
+@keyframes stop-pop {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 color-mix(in srgb, var(--c, var(--muted)) 50%, transparent); }
+  35% { transform: scale(1.2); }
+  100% { transform: scale(1); box-shadow: 0 0 0 6px transparent; }
+}
+.list li.leaving input[type="checkbox"] { animation: stop-pop 0.45s ease; }
+.list li.leaving { max-height: 220px; overflow: hidden; animation: leave 0.34s ease 0.45s forwards; }
+@keyframes leave { to { max-height: 0; opacity: 0; border-bottom-width: 0; } }
+
+/* Entrada em cascata e destaque da tarefa nova */
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.list li { animation: rise 0.3s ease both; animation-delay: calc(var(--i, 0) * 30ms); }
+.notes .note { animation: rise 0.3s ease both; animation-delay: calc(var(--i, 0) * 35ms); }
+@keyframes fresh { 0% { background: color-mix(in srgb, var(--c, var(--ink)) 24%, transparent); } 100% { background: transparent; } }
+.list li.fresh .row { animation: fresh 1.4s ease-out; border-radius: 6px; }
+
+/* Detalhes, painel de lembretes e aviso com entrada suave */
+:root { --dh: 600px; }
+.details { animation: details-open 0.26s ease; }
+@keyframes details-open { from { max-height: 0; opacity: 0; overflow: hidden; } to { max-height: var(--dh); opacity: 1; overflow: hidden; } }
+.modal-backdrop { animation: fade-in 0.18s ease; backdrop-filter: blur(2px); }
+.modal { animation: modal-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1); }
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes modal-in { from { opacity: 0; transform: translateY(10px) scale(0.98); } }
+.toast { overflow: hidden; animation: toast-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.toast::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px;
+  background: color-mix(in srgb, var(--on-ink) 55%, transparent); transform-origin: left; animation: toast-bar var(--ms, 6000ms) linear forwards;
+}
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes toast-bar { to { transform: scaleX(0); } }
+
+/* Linha do dia */
+.dayline { margin: 0 0 18px; padding: 12px 16px 14px; background: var(--surface); border: 1.5px solid var(--rule); border-radius: 10px; }
+.dl-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; }
+.dl-date { font: 700 1rem var(--font-ui); }
+.dl-count { color: var(--muted); font: 600 0.85rem var(--font-ui); }
+.dl-rail { position: relative; height: 28px; margin: 10px 12px 0; }
+.dl-track, .dl-fill { position: absolute; left: 0; top: 50%; height: 4px; margin-top: -2px; border-radius: 2px; }
+.dl-track { right: 0; background: var(--rule); }
+.dl-fill { width: var(--fill, 0%); background: var(--ink); transition: width 0.6s cubic-bezier(0.3, 0.7, 0.2, 1); }
+.dl-stop {
+  position: absolute; top: 50%; left: var(--p, 0%); width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%;
+  border: 3px solid var(--c, var(--ink)); background: var(--surface);
+  transition: left 0.6s cubic-bezier(0.3, 0.7, 0.2, 1), background-color 0.3s;
+}
+.dl-stop.on { background: var(--c, var(--ink)); }
+.dl-stop.late { border-color: var(--red); }
+.dl-stop.next { animation: stop-pulse 2s ease-out infinite; }
+@keyframes stop-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--c, var(--ink)) 45%, transparent); }
+  70%, 100% { box-shadow: 0 0 0 9px transparent; }
+}
+.dl-more { display: block; margin-top: 4px; color: var(--muted); font-size: 0.8rem; }
+
+/* Próximas: placas de período */
+.group-plate { display: flex; align-items: center; gap: 8px; margin: 18px 0 2px; font: 700 0.95rem var(--font-ui); }
+.gp-dot { width: 10px; height: 10px; border-radius: 50%; border: 3px solid var(--ink); }
+
+/* Carregamento em esqueleto e estados vazios */
+.skel-row { display: flex; align-items: center; gap: 12px; padding: 14px 4px; border-bottom: 1px solid var(--rule); }
+.skel-dot { flex: none; width: 24px; height: 24px; border-radius: 50%; border: 3px solid var(--rule); }
+.skel-bar {
+  display: block; height: 14px; border-radius: 7px; background-size: 200% 100%; animation: shimmer 1.4s linear infinite;
+  background-image: linear-gradient(90deg, var(--rule) 25%, color-mix(in srgb, var(--rule) 35%, var(--surface)) 50%, var(--rule) 75%);
+}
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.skel-notes { columns: 230px; column-gap: 16px; }
+.skel-note { display: grid; align-content: start; gap: 10px; break-inside: avoid; margin: 0 0 16px; padding: 14px; background: var(--surface); border: 1.5px solid var(--rule); border-top-width: 5px; border-radius: 8px; }
+.empty-state { padding: 28px 4px; }
+.es-title { margin: 8px 0 2px; font: 700 1.05rem var(--font-ui); }
+.es-hint { margin: 0; color: var(--muted); font: italic 400 1.02rem var(--font-text); }
+
+@media (max-width: 700px) { :root { --dh: 1500px; } .dayline { padding: 10px 12px 12px; } }
+
+/* Quem prefere menos movimento: tudo termina na hora, sem animações contínuas */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-delay: 0ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}

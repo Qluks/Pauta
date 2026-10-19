@@ -1,4 +1,4 @@
-import { FormEvent, KeyboardEvent, useEffect, useMemo, useState } from "react";
+import { CSSProperties, FormEvent, KeyboardEvent, useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabase";
 import type { ChecklistItem, Note } from "./types";
 import { cv, lineVar } from "./colors";
@@ -9,6 +9,8 @@ import TagInput from "./Tags";
 import Attachments from "./Attachments";
 import { ChecklistEditor, ChecklistView } from "./Checklist";
 import { sameTags } from "./util";
+import { NotesSkeleton } from "./Skeleton";
+import EmptyState from "./EmptyState";
 
 const colorOf = (c: string | null) => (c === null ? "var(--rule)" : lineVar(Number(c)));
 const EMPTY = { title: "", body: "", color: null as string | null, tags: [] as string[], checklist: [] as ChecklistItem[] };
@@ -148,10 +150,10 @@ export default function Notes({ view }: { view: string }) {
   const pinned = archive ? [] : shown.filter((n) => n.pinned);
   const others = archive ? shown : shown.filter((n) => !n.pinned);
 
-  const card = (n: Note) => {
+  const card = (n: Note, i = 0) => {
     const count = attCount.get(n.id) ?? 0;
     return (
-      <article key={n.id} className="note" style={cv(colorOf(n.color))} data-tinted={n.color !== null}>
+      <article key={n.id} className="note" style={{ ...cv(colorOf(n.color)), "--i": Math.min(i, 8) } as CSSProperties} data-tinted={n.color !== null}>
         {editingId === n.id ? (
           <>
             <input className="ntitle" autoFocus value={edit.title} onChange={(e) => setEdit({ ...edit, title: e.target.value })} placeholder="Título" aria-label="Título" />
@@ -240,9 +242,12 @@ export default function Notes({ view }: { view: string }) {
       )}
 
       {loading ? (
-        <p className="empty">Carregando…</p>
+        <NotesSkeleton />
       ) : shown.length === 0 ? (
-        <p className="empty">{q || activeTag ? "Nenhuma nota encontrada." : archive ? "Nada arquivado." : "Nenhuma nota ainda. Escreva a primeira acima."}</p>
+        <EmptyState
+          title={q || activeTag ? "Nenhuma nota encontrada." : archive ? "Nada arquivado." : "Nenhuma nota ainda."}
+          hint={q || activeTag ? "Tente outra palavra ou limpe o filtro." : archive ? "As notas que você arquivar ficam guardadas aqui." : "Escreva a primeira acima. Dica: use “+ Lista de itens” para um checklist."}
+        />
       ) : (
         <>
           {pinned.length > 0 && (

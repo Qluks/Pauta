@@ -1,14 +1,17 @@
-import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "./supabase";
 import type { Task } from "./types";
 import { cv, listColor } from "./colors";
 import { TASK_COLS, useData } from "./data";
 import { useToast } from "./Toast";
-import { describeDate, fmt, isDormant, reminderPassed, today, tomorrow } from "./util";
+import { describeDate, doneToday, fmt, isDormant, periodOf, PERIODS, reminderPassed, today, tomorrow } from "./util";
 import { nextDue, parseQuick, RECURRENCE_LABEL, snoozeUntil } from "./parse";
 import TagInput from "./Tags";
 import ListEditor from "./ListEditor";
 import Attachments from "./Attachments";
+import DayLine, { type Stop } from "./DayLine";
+import { ListSkeleton } from "./Skeleton";
+import EmptyState from "./EmptyState";
 
 const PRIORITY = ["Sem prioridade", "Baixa", "Média", "Alta"];
 const TITLES: Record<string, string> = { today: "Hoje", upcoming: "Próximas", all: "Todas", done: "Concluídas" };
@@ -24,6 +27,8 @@ export default function Tasks({ view }: { view: string }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [editingList, setEditingList] = useState(false);
+  const [leaving, setLeaving] = useState<Map<string, Task>>(new Map()); // tarefas que estão saindo da tela com animação
+  const [fresh, setFresh] = useState<string | null>(null); // tarefa recém-criada (destaque)
   const inputRef = useRef<HTMLInputElement>(null);
 
   const t0 = today();
@@ -54,7 +59,8 @@ export default function Tasks({ view }: { view: string }) {
     if (view.startsWith("list:")) return t.list_id === view.slice(5);
     return true;
   };
-  const base = tasks.filter(inView);
+  const base = tasks.filter((t) => inView(t) || leaving.has(t.id));
+  const orig = (t: Task) => leaving.get(t.id) ?? t; // enquanto sai, mantém a posição e o grupo de antes
   const tagCounts = (() => {
     const m = new Map<string, number>();
     for (const t of base) for (const g of t.tags ?? []) m.set(g, (m.get(g) ?? 0) + 1);
@@ -66,11 +72,13 @@ export default function Tasks({ view }: { view: string }) {
   const items = base
     .filter((t) => !activeTag || (t.tags ?? []).includes(activeTag))
     .filter((t) => `${t.title} ${(t.tags ?? []).join(" ")}`.toLowerCase().includes(q))
-    .sort((a, b) =>
-      view === "done"
+    .sort((x, y) => {
+      const a = orig(x);
+      const b = orig(y);
+      return view === "done"
         ? (b.done_at ?? "").localeCompare(a.done_at ?? "")
-        : (a.due_at ?? "9999").localeCompare(b.due_at ?? "9999") || (a.due_time ?? "99:99").localeCompare(b.due_time ?? "99:99") || b.priority - a.priority || b.created_at.localeCompare(a.created_at)
-    );
+        : (a.due_at ?? "9999").localeCompare(b.due_at ?? "9999") || (a.due_time ?? "99:99").localeCompare(b.due_time ?? "99:99") || b.priority - a.priority || b.created_at.localeCompare(a.created_at);
+    });
 
   async function add(e: FormEvent) {
     e.preventDefault();
@@ -91,6 +99,8 @@ export default function Tasks({ view }: { view: string }) {
     const tempId = crypto.randomUUID();
     const temp: Task = { id: tempId, done: false, done_at: null, snoozed_until: null, created_at: new Date().toISOString(), ...fields };
     setTasks((prev) => [temp, ...prev]);
+    setFresh(tempId);
+    window.setTimeout(() => setFresh(null), 1600);
     const { data, error } = await supabase.from("tasks").insert({ id: tempId, ...fields }).select(TASK_COLS).single();
     if (error) {
       setTasks((prev) => prev.filter((x) => x.id !== tempId));
@@ -116,9 +126,25 @@ export default function Tasks({ view }: { view: string }) {
     }
   }
 
+  // Mantém a tarefa na tela enquanto ela "sai" com animação
+  function leave(t: Task) {
+    setLeaving((m) => new Map(m).set(t.id, t));
+    if (openId === t.id) setOpenId(null);
+    window.setTimeout(
+      () =>
+        setLeaving((m) => {
+          const n = new Map(m);
+          n.delete(t.id);
+          return n;
+        }),
+      850
+    );
+  }
+
   function toggle(t: Task) {
     // Tarefa recorrente que está "dormindo": traz de volta agora
     if (isDormant(t)) {
+      if (!inView({ ...t, snoozed_until: null })) leave(t);
       patch(t, { snoozed_until: null, done_at: null });
       return;
     }
@@ -126,12 +152,14 @@ export default function Tasks({ view }: { view: string }) {
     if (!t.done && t.recurrence && t.due_at) {
       const next = nextDue(t.due_at, t.recurrence);
       const until = snoozeUntil(next, t.recurrence);
+      if (!inView({ ...t, due_at: next, snoozed_until: until })) leave(t);
       patch(t, { due_at: next, snoozed_until: until, ...(until ? { done_at: new Date().toISOString() } : {}) });
       toast(until ? `Concluída. Volta ${until === tomorrow() ? "amanhã" : "em " + fmt(until)}` : `Próxima em ${fmt(next)}`, {
         onUndo: () => patch(t, { due_at: t.due_at, snoozed_until: t.snoozed_until, done_at: t.done_at }),
       });
       return;
     }
+    if (!inView({ ...t, done: !t.done })) leave(t);
     patch(t, { done: !t.done, done_at: t.done ? null : new Date().toISOString() });
   }
 
@@ -162,21 +190,26 @@ export default function Tasks({ view }: { view: string }) {
     if (e.key === "Escape") setEditingId(null);
   }
 
-  function renderTask(t: Task) {
+  function renderTask(t: Task, index = 0) {
+    const isLeaving = leaving.has(t.id);
     const overdue = !t.done && t.due_at !== null && t.due_at < t0;
     const dormant = isDormant(t);
     const li = lists.findIndex((l) => l.id === t.list_id);
     const color = li >= 0 ? listColor(lists[li], li) : "var(--muted)";
     const ln = li >= 0 ? lists[li].name : undefined;
     return (
-      <li key={t.id} className={t.done || dormant ? "done" : ""} style={cv(color)}>
+      <li
+        key={t.id}
+        className={[t.done || dormant ? "done" : "", isLeaving ? "leaving" : "", fresh === t.id ? "fresh" : ""].filter(Boolean).join(" ")}
+        style={{ ...cv(color), "--i": Math.min(index, 10) } as CSSProperties}
+      >
         <div className="row">
           <input type="checkbox" checked={t.done || dormant} onChange={() => toggle(t)} aria-label={`Concluir ${t.title}`} />
           {editingId === t.id ? (
             <input className="edit" autoFocus value={editText} onChange={(e) => setEditText(e.target.value)} onKeyDown={(e) => onEditKey(e, t)} onBlur={() => saveEdit(t)} />
           ) : (
             <span className="title" onDoubleClick={() => { setEditingId(t.id); setEditText(t.title); }} title="Clique duas vezes para editar">
-              {t.title}
+              <span className="ttext">{t.title}</span>
             </span>
           )}
           <span className="badges">
@@ -266,8 +299,33 @@ export default function Tasks({ view }: { view: string }) {
   const heading = TITLES[view] ?? currentList?.name ?? "Tarefas";
   const headColor = currentList ? listColor(currentList, listIdx) : "var(--ink)";
   const hasPreview = title.trim() && (parsed.due_at || parsed.priority || parsed.listId || parsed.tags.length || parsed.recurrence);
-  const late = view === "today" ? items.filter((t) => (t.due_at ?? "") < t0) : [];
-  const rest = view === "today" ? items.filter((t) => (t.due_at ?? "") >= t0) : items;
+  const late = view === "today" ? items.filter((t) => (orig(t).due_at ?? "") < t0) : [];
+  const rest = view === "today" ? items.filter((t) => (orig(t).due_at ?? "") >= t0) : items;
+
+  // Linha do dia (tela Hoje): concluídas hoje primeiro, depois as pendentes
+  const dayStops: Stop[] = [];
+  if (view === "today") {
+    const stopOf = (t: Task, done: boolean): Stop => {
+      const i = lists.findIndex((l) => l.id === t.list_id);
+      return { id: t.id, done, late: !done && !!t.due_at && t.due_at < t0, color: i >= 0 ? listColor(lists[i], i) : "var(--ink)", title: t.title };
+    };
+    const finished = tasks.filter((t) => (t.done || isDormant(t)) && doneToday(t)).sort((a, b) => (a.done_at ?? "").localeCompare(b.done_at ?? ""));
+    const open = tasks
+      .filter((t) => !t.done && !isDormant(t) && !!t.due_at && t.due_at <= t0)
+      .sort((a, b) => (a.due_at ?? "").localeCompare(b.due_at ?? "") || (a.due_time ?? "99:99").localeCompare(b.due_time ?? "99:99") || b.priority - a.priority);
+    dayStops.push(...finished.map((t) => stopOf(t, true)), ...open.map((t) => stopOf(t, false)));
+  }
+
+  const emptyCopy =
+    q || activeTag
+      ? { title: "Nenhuma tarefa encontrada.", hint: "Tente outra palavra ou limpe o filtro de etiqueta." }
+      : view === "today"
+      ? { title: "Nada para hoje.", hint: "Adicione uma tarefa acima ou defina um prazo. Ex.: Pagar luz hoje #casa" }
+      : view === "done"
+      ? { title: "Nada concluído ainda.", hint: "As tarefas que você concluir aparecem aqui." }
+      : view === "upcoming"
+      ? { title: "Nenhuma tarefa futura.", hint: "Dê um prazo a uma tarefa. Ex.: Reunião sexta às 15h" }
+      : { title: "Nenhuma tarefa aqui.", hint: "Digite no campo acima. Ex.: Pagar luz amanhã #casa !alta" };
 
   return (
     <section>
@@ -278,6 +336,7 @@ export default function Tasks({ view }: { view: string }) {
         )}
       </div>
       {editingList && currentList && <ListEditor key={currentList.id} list={currentList} index={listIdx} onClose={() => setEditingList(false)} />}
+      {view === "today" && !loading && <DayLine stops={dayStops} />}
 
       <form className="quick" onSubmit={add}>
         <input ref={inputRef} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Nova tarefa (ex.: pagar luz amanhã #casa !alta)" aria-label="Nova tarefa" enterKeyHint="done" />
@@ -315,11 +374,9 @@ export default function Tasks({ view }: { view: string }) {
       )}
 
       {loading ? (
-        <p className="empty">Carregando…</p>
+        <ListSkeleton />
       ) : items.length === 0 ? (
-        <p className="empty">
-          {q || activeTag ? "Nenhuma tarefa encontrada." : view === "today" ? "Nada para hoje. Defina um prazo nas tarefas ou adicione uma aqui." : "Nenhuma tarefa aqui."}
-        </p>
+        <EmptyState {...emptyCopy} />
       ) : (
         <>
           {late.length > 0 && (
@@ -329,7 +386,17 @@ export default function Tasks({ view }: { view: string }) {
               {rest.length > 0 && <h3 className="group-label">Hoje</h3>}
             </>
           )}
-          {rest.length > 0 && <ul className="list">{rest.map(renderTask)}</ul>}
+          {view === "upcoming"
+            ? PERIODS.map((p) => {
+                const group = rest.filter((t) => periodOf(orig(t).due_at ?? "") === p.id);
+                return group.length > 0 ? (
+                  <div key={p.id}>
+                    <h3 className="group-plate"><span className="gp-dot" aria-hidden="true" />{p.label}</h3>
+                    <ul className="list">{group.map(renderTask)}</ul>
+                  </div>
+                ) : null;
+              })
+            : rest.length > 0 && <ul className="list">{rest.map(renderTask)}</ul>}
         </>
       )}
     </section>
