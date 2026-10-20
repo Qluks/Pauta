@@ -1,4 +1,5 @@
 import { PointerEvent, ReactNode, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { cv } from "./colors";
 
 type Props = {
@@ -94,11 +95,12 @@ export default function Sheet({ title, onClose, variant = "side", color, header,
     else ref.current.style.transform = "";
   }
 
-  return (
-    <div className={`sheet-backdrop ${variant}${closing ? " closing" : ""}`} onClick={close}>
+  // Renderizado direto no <body>: nenhum contêiner da tela (como a barra lateral fixa) consegue ficar por cima
+  return createPortal(
+    <div className={`sheet-backdrop v-${variant}${closing ? " closing" : ""}`} onClick={close}>
       <div
         ref={ref}
-        className={`sheet ${variant}${closing ? " closing" : ""}`}
+        className={`sheet v-${variant}${closing ? " closing" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -117,6 +119,7 @@ export default function Sheet({ title, onClose, variant = "side", color, header,
         )}
         <div className="sheet-body">{typeof children === "function" ? children(close) : children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

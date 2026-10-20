@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { currentSubscription, disablePush, enablePush, hasKey, isIOS, isStandalone, matchesKey, pushSupported, serverTest, testNotification } from "./push";
 
 type State = "loading" | "unsupported" | "install" | "nokey" | "blocked" | "off" | "on";
@@ -44,7 +45,7 @@ export default function NotificationsPanel({ onClose }: { onClose: () => void })
     setBusy(false);
   }
 
-  return (
+  return createPortal(
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" role="dialog" aria-modal="true" aria-labelledby="rem-title" onClick={(e) => e.stopPropagation()}>
         <h2 id="rem-title">Lembretes</h2>
@@ -77,6 +78,7 @@ export default function NotificationsPanel({ onClose }: { onClose: () => void })
 
         <button ref={closeRef} className="ghost" onClick={onClose}>Fechar</button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

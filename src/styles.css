@@ -404,9 +404,9 @@ body::before {
 
 /* Computador: painel à direita */
 @media (min-width: 701px) {
-  .sheet.side { top: 0; right: 0; bottom: 0; width: min(440px, 100vw); border-right: 0; border-radius: 0; animation: drawer-in 0.24s cubic-bezier(0.2, 0.8, 0.2, 1); }
-  .sheet.side.closing { animation: drawer-out 0.2s ease forwards; }
-  .sheet-backdrop.bottom { display: none; }
+  .sheet.v-side { top: 0; right: 0; bottom: 0; width: min(440px, 100vw); border-right: 0; border-radius: 0; animation: drawer-in 0.24s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .sheet.v-side.closing { animation: drawer-out 0.2s ease forwards; }
+  .sheet-backdrop.v-bottom { display: none; }
 }
 
 /* Celular: barra inferior, folhas que sobem de baixo e botão + */
@@ -452,3 +452,13 @@ body::before {
   .side--sheet h2 { display: block; }
   .side--sheet .lists { display: block; }
 }
+
+/* ---- Fundo escurecido com desfoque (painéis e janelas) ---- */
+:root { --scrim: rgb(20 30 50 / 0.38); }
+@media (prefers-color-scheme: dark) { :root { --scrim: rgb(0 0 0 / 0.55); } }
+.sheet-backdrop { background: none; }
+.sheet-backdrop::before {
+  content: ""; position: absolute; inset: 0; background: var(--scrim);
+  -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+}
+.modal-backdrop { background: var(--scrim); }
