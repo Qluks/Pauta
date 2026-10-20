@@ -7,7 +7,7 @@ import { LIST_COLS, useData } from "./data";
 import { isDormant, today } from "./util";
 import NotificationsPanel from "./Notifications";
 
-type Props = { view: string; setView: (v: string) => void; onSignOut: () => void };
+type Props = { view: string; setView: (v: string) => void; onSignOut: () => void; variant?: "side" | "sheet" };
 
 const VIEWS: { id: string; label: string; gap?: boolean }[] = [
   { id: "today", label: "Hoje" },
@@ -18,7 +18,7 @@ const VIEWS: { id: string; label: string; gap?: boolean }[] = [
   { id: "archive", label: "Arquivo" },
 ];
 
-export default function Sidebar({ view, setView, onSignOut }: Props) {
+export default function Sidebar({ view, setView, onSignOut, variant = "side" }: Props) {
   const { tasks, notes, lists, attachments, setLists } = useData();
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -70,7 +70,7 @@ export default function Sidebar({ view, setView, onSignOut }: Props) {
   const count = (n: number | undefined) => (n ? <span className="count">{n}</span> : null);
 
   return (
-    <nav className="side" aria-label="Navegação">
+    <nav className={`side${variant === "sheet" ? " side--sheet" : ""}`} aria-label="Navegação">
       <div className="side-head">
         <h1 className="brand"><Mark /> Pauta</h1>
         <div className="side-actions">

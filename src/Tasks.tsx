@@ -2,18 +2,17 @@ import { CSSProperties, FormEvent, KeyboardEvent, useEffect, useMemo, useRef, us
 import { supabase } from "./supabase";
 import type { Task } from "./types";
 import { cv, listColor } from "./colors";
-import { TASK_COLS, useData } from "./data";
+import { useData } from "./data";
 import { useToast } from "./Toast";
-import { describeDate, doneToday, fmt, isDormant, periodOf, PERIODS, reminderPassed, today, tomorrow } from "./util";
+import { describeDate, doneToday, fmt, isDormant, periodOf, PERIODS, PRIORITY, reminderPassed, today, tomorrow } from "./util";
 import { nextDue, parseQuick, RECURRENCE_LABEL, snoozeUntil } from "./parse";
-import TagInput from "./Tags";
 import ListEditor from "./ListEditor";
-import Attachments from "./Attachments";
+import TaskSheet from "./TaskSheet";
+import { useAddTask } from "./addTask";
 import DayLine, { type Stop } from "./DayLine";
 import { ListSkeleton } from "./Skeleton";
 import EmptyState from "./EmptyState";
 
-const PRIORITY = ["Sem prioridade", "Baixa", "Média", "Alta"];
 const TITLES: Record<string, string> = { today: "Hoje", upcoming: "Próximas", all: "Todas", done: "Concluídas" };
 
 export default function Tasks({ view }: { view: string }) {
@@ -30,6 +29,7 @@ export default function Tasks({ view }: { view: string }) {
   const [leaving, setLeaving] = useState<Map<string, Task>>(new Map()); // tarefas que estão saindo da tela com animação
   const [fresh, setFresh] = useState<string | null>(null); // tarefa recém-criada (destaque)
   const inputRef = useRef<HTMLInputElement>(null);
+  const addTask = useAddTask();
 
   const t0 = today();
   const parsed = useMemo(() => parseQuick(title, lists), [title, lists]);
@@ -37,6 +37,10 @@ export default function Tasks({ view }: { view: string }) {
   for (const a of attachments) if (a.task_id) attCount.set(a.task_id, (attCount.get(a.task_id) ?? 0) + 1);
   const listIdx = view.startsWith("list:") ? lists.findIndex((l) => `list:${l.id}` === view) : -1;
   const currentList = listIdx >= 0 ? lists[listIdx] : undefined;
+  const openTask = openId ? tasks.find((t) => t.id === openId) : undefined;
+  useEffect(() => {
+    if (openId && !tasks.some((t) => t.id === openId)) setOpenId(null); // a tarefa foi excluída
+  }, [openId, tasks]);
 
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -80,35 +84,14 @@ export default function Tasks({ view }: { view: string }) {
         : (a.due_at ?? "9999").localeCompare(b.due_at ?? "9999") || (a.due_time ?? "99:99").localeCompare(b.due_time ?? "99:99") || b.priority - a.priority || b.created_at.localeCompare(a.created_at);
     });
 
-  async function add(e: FormEvent) {
+  function add(e: FormEvent) {
     e.preventDefault();
-    const p = parseQuick(title, lists);
-    if (!p.title) return;
+    const r = addTask(title, { view, listId: currentList?.id ?? null, tag: activeTag });
+    if (!r) return;
     setTitle("");
-    const dueAt = p.due_at ?? (view === "today" ? t0 : null);
-    const fields = {
-      title: p.title,
-      list_id: p.listId ?? currentList?.id ?? null,
-      due_at: dueAt,
-      due_time: dueAt ? p.due_time : null,
-      notified_at: reminderPassed(dueAt, p.due_time) ? new Date().toISOString() : null,
-      priority: p.priority,
-      tags: activeTag && !p.tags.includes(activeTag) ? [...p.tags, activeTag] : p.tags,
-      recurrence: p.recurrence,
-    };
-    const tempId = crypto.randomUUID();
-    const temp: Task = { id: tempId, done: false, done_at: null, snoozed_until: null, created_at: new Date().toISOString(), ...fields };
-    setTasks((prev) => [temp, ...prev]);
-    setFresh(tempId);
+    setFresh(r.id);
     window.setTimeout(() => setFresh(null), 1600);
-    const { data, error } = await supabase.from("tasks").insert({ id: tempId, ...fields }).select(TASK_COLS).single();
-    if (error) {
-      setTasks((prev) => prev.filter((x) => x.id !== tempId));
-      setError(error.message);
-    } else {
-      const row = data as unknown as Task;
-      setTasks((prev) => (prev.some((x) => x.id === row.id) ? prev.map((x) => (x.id === row.id ? row : x)) : [row, ...prev]));
-    }
+    r.done.then((msg) => msg && setError(msg));
   }
 
   async function patch(task: Task, changes: Partial<Task>) {
@@ -231,67 +214,6 @@ export default function Tasks({ view }: { view: string }) {
             Detalhes
           </button>
         </div>
-        {openId === t.id && (
-          <div className="details">
-            <div className="datefield">
-              <label>
-                Prazo
-                <input type="date" value={t.due_at ?? ""} onChange={(e) => patch(t, { due_at: e.target.value || null })} />
-              </label>
-              <label>
-                Horário (para o lembrete)
-                <input type="time" value={t.due_time?.slice(0, 5) ?? ""} onChange={(e) => patch(t, { due_time: e.target.value || null, ...(e.target.value && !t.due_at ? { due_at: today() } : {}) })} />
-              </label>
-              <div className="datequick">
-                <button type="button" className="chipbtn" onClick={() => patch(t, { due_at: today() })}>Hoje</button>
-                <button type="button" className="chipbtn" onClick={() => patch(t, { due_at: tomorrow() })}>Amanhã</button>
-                {t.due_at && <button type="button" className="chipbtn clear" onClick={() => patch(t, { due_at: null, due_time: null })}>Remover prazo</button>}
-                {t.due_time && <button type="button" className="chipbtn clear" onClick={() => patch(t, { due_time: null })}>Remover horário</button>}
-              </div>
-            </div>
-            <label>
-              Prioridade
-              <select value={t.priority} onChange={(e) => patch(t, { priority: Number(e.target.value) })}>
-                {PRIORITY.map((p, i) => (
-                  <option key={i} value={i}>{p}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Repetir
-              <select
-                value={t.recurrence ?? ""}
-                onChange={(e) => {
-                  const v = e.target.value || null;
-                  patch(t, { recurrence: v, ...(v && !t.due_at ? { due_at: today() } : {}) });
-                }}
-              >
-                <option value="">Não repete</option>
-                {Object.entries(RECURRENCE_LABEL).map(([k, label]) => (
-                  <option key={k} value={k}>{label}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Lista
-              <select value={ln ? t.list_id ?? "" : ""} onChange={(e) => patch(t, { list_id: e.target.value || null })}>
-                <option value="">Sem lista</option>
-                {lists.map((l) => (
-                  <option key={l.id} value={l.id}>{l.name}</option>
-                ))}
-              </select>
-            </label>
-            <div className="tagsfield">
-              <span className="lbl">Etiquetas</span>
-              <TagInput tags={t.tags ?? []} onChange={(tags) => patch(t, { tags })} suggestions={allTags} listId={`tags-task-${t.id}`} />
-            </div>
-            <div className="tagsfield">
-              <span className="lbl">Anexos</span>
-              <Attachments taskId={t.id} />
-            </div>
-            <button className="ghost danger" onClick={() => remove(t)}>Excluir tarefa</button>
-          </div>
-        )}
       </li>
     );
   }
@@ -398,6 +320,9 @@ export default function Tasks({ view }: { view: string }) {
               })
             : rest.length > 0 && <ul className="list">{rest.map(renderTask)}</ul>}
         </>
+      )}
+      {openTask && (
+        <TaskSheet key={openTask.id} task={openTask} lists={lists} allTags={allTags} patch={patch} remove={remove} onClose={() => setOpenId(null)} />
       )}
     </section>
   );

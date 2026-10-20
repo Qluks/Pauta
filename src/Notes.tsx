@@ -61,6 +61,17 @@ export default function Notes({ view }: { view: string }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [archive, activeTag]);
 
+  // Botão "+" da barra inferior (celular)
+  useEffect(() => {
+    const open = () => {
+      if (archive) return;
+      openCompose();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+    window.addEventListener("pauta:new-note", open);
+    return () => window.removeEventListener("pauta:new-note", open);
+  }, [archive, activeTag]);
+
   async function add(e?: FormEvent) {
     e?.preventDefault();
     const title = draft.title.trim();

@@ -64,3 +64,5 @@ export function periodOf(due: string, now = new Date()): Period {
 
 // Concluída hoje (no fuso do aparelho)?
 export const doneToday = (t: Task) => !!t.done_at && isoDate(new Date(t.done_at)) === today();
+
+export const PRIORITY = ["Sem prioridade", "Baixa", "Média", "Alta"];

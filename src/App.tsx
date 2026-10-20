@@ -8,6 +8,7 @@ import Notes from "./Notes";
 import { DataProvider, useData } from "./data";
 import { ToastProvider } from "./Toast";
 import { syncPush } from "./push";
+import MobileNav from "./MobileNav";
 
 function Main({ onSignOut }: { onSignOut: () => void }) {
   const { lists, loading } = useData();
@@ -54,6 +55,7 @@ function Main({ onSignOut }: { onSignOut: () => void }) {
     <div className="shell">
       <Sidebar view={view} setView={setView} onSignOut={onSignOut} />
       <main className="content">{view === "notes" || view === "archive" ? <Notes view={view} /> : <Tasks view={view} />}</main>
+      <MobileNav view={view} setView={setView} onSignOut={onSignOut} />
     </div>
   );
 }
