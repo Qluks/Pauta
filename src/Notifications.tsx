@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useAppearance, type Appearance } from "./appearance";
 import { currentSubscription, disablePush, enablePush, hasKey, isIOS, isStandalone, matchesKey, pushSupported, serverTest, testNotification } from "./push";
 
 type State = "loading" | "unsupported" | "install" | "nokey" | "blocked" | "off" | "on";
@@ -10,6 +11,40 @@ async function computeState(): Promise<State> {
   if (Notification.permission === "denied") return "blocked";
   const sub = Notification.permission === "granted" ? await currentSubscription() : null;
   return sub && matchesKey(sub) ? "on" : "off"; // inscrição de chave antiga aparece como "desativada"
+}
+
+function AppearanceSection() {
+  const [a, set] = useAppearance();
+  const seg = (key: "theme" | "paper", value: string, label: string) => (
+    <button type="button" className="seg" aria-pressed={a[key] === value} onClick={() => set({ [key]: value } as Partial<Appearance>)}>
+      {label}
+    </button>
+  );
+  return (
+    <section className="settings-block">
+      <h3 className="modal-sub">Aparência</h3>
+      <div className="seg-row">
+        <span className="lbl">Tema</span>
+        <div className="seg-group" role="group" aria-label="Tema">
+          {seg("theme", "auto", "Automático")}
+          {seg("theme", "light", "Claro")}
+          {seg("theme", "dark", "Escuro")}
+        </div>
+      </div>
+      <div className="seg-row">
+        <span className="lbl">Papel</span>
+        <div className="seg-group" role="group" aria-label="Estilo do papel">
+          {seg("paper", "grid", "Quadriculado")}
+          {seg("paper", "ruled", "Pautado")}
+          {seg("paper", "plain", "Liso")}
+        </div>
+      </div>
+      <label className="check">
+        <input type="checkbox" checked={a.cheer} onChange={(e) => set({ cheer: e.target.checked })} />
+        Animação ao concluir o dia
+      </label>
+    </section>
+  );
 }
 
 export default function NotificationsPanel({ onClose }: { onClose: () => void }) {
@@ -48,7 +83,10 @@ export default function NotificationsPanel({ onClose }: { onClose: () => void })
   return createPortal(
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" role="dialog" aria-modal="true" aria-labelledby="rem-title" onClick={(e) => e.stopPropagation()}>
-        <h2 id="rem-title">Lembretes</h2>
+        <h2 id="rem-title">Ajustes</h2>
+        <AppearanceSection />
+        <hr />
+        <h3 className="modal-sub">Lembretes</h3>
 
         {state === "loading" && <p>Verificando…</p>}
         {state === "nokey" && <p>As notificações ainda não foram configuradas neste app (falta a chave <code>VITE_VAPID_PUBLIC_KEY</code>).</p>}

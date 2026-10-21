@@ -1,10 +1,10 @@
-import { CSSProperties, FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, FormEvent, KeyboardEvent, MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "./supabase";
 import type { Task } from "./types";
 import { cv, listColor } from "./colors";
 import { useData } from "./data";
 import { useToast } from "./Toast";
-import { describeDate, doneToday, fmt, isDormant, periodOf, PERIODS, PRIORITY, reminderPassed, today, tomorrow } from "./util";
+import { dayHint, describeDate, doneToday, fmt, isDormant, nextMondayIso, periodOf, PERIODS, PRIORITY, reminderPassed, today, tomorrow } from "./util";
 import { nextDue, parseQuick, RECURRENCE_LABEL, snoozeUntil } from "./parse";
 import ListEditor from "./ListEditor";
 import TaskSheet from "./TaskSheet";
@@ -12,10 +12,12 @@ import { useAddTask } from "./addTask";
 import DayLine, { type Stop } from "./DayLine";
 import { ListSkeleton } from "./Skeleton";
 import EmptyState from "./EmptyState";
+import Menu, { type MenuItem } from "./Menu";
+import { readAppearance } from "./appearance";
 
 const TITLES: Record<string, string> = { today: "Hoje", upcoming: "Próximas", all: "Todas", done: "Concluídas" };
 
-export default function Tasks({ view }: { view: string }) {
+export default function Tasks({ view, openRequest, onHandled }: { view: string; openRequest?: { id: string; n: number } | null; onHandled?: () => void }) {
   const { tasks, setTasks, lists, attachments, setAttachments, purgeFiles, loading, loadError, hide, unhide } = useData();
   const toast = useToast();
   const [title, setTitle] = useState("");
@@ -28,6 +30,10 @@ export default function Tasks({ view }: { view: string }) {
   const [editingList, setEditingList] = useState(false);
   const [leaving, setLeaving] = useState<Map<string, Task>>(new Map()); // tarefas que estão saindo da tela com animação
   const [fresh, setFresh] = useState<string | null>(null); // tarefa recém-criada (destaque)
+  const [menu, setMenu] = useState<{ rect: DOMRect; items: MenuItem[]; label: string } | null>(null);
+  const [celebrate, setCelebrate] = useState(false);
+  const prevAllDone = useRef<boolean | null>(null);
+  const celeTimer = useRef<number | undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
   const addTask = useAddTask();
 
@@ -41,6 +47,13 @@ export default function Tasks({ view }: { view: string }) {
   useEffect(() => {
     if (openId && !tasks.some((t) => t.id === openId)) setOpenId(null); // a tarefa foi excluída
   }, [openId, tasks]);
+  // Pedido da paleta de comandos: abrir os detalhes de uma tarefa
+  useEffect(() => {
+    if (openRequest) {
+      setOpenId(openRequest.id);
+      onHandled?.();
+    }
+  }, [openRequest]);
 
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -146,6 +159,49 @@ export default function Tasks({ view }: { view: string }) {
     patch(t, { done: !t.done, done_at: t.done ? null : new Date().toISOString() });
   }
 
+  // ---- Adiar ----
+  function snoozeTo(t: Task, changes: Partial<Task>, label: string) {
+    const prev = { due_at: t.due_at, due_time: t.due_time };
+    if (!inView({ ...t, ...changes })) leave(t);
+    patch(t, changes);
+    toast(`Adiada: ${label}`, { onUndo: () => patch(t, prev) });
+  }
+  function snoozeItems(t: Task): MenuItem[] {
+    const items: MenuItem[] = [];
+    const mon = nextMondayIso();
+    if (new Date().getHours() < 19 && !(t.due_at === today() && t.due_time?.slice(0, 5) === "20:00"))
+      items.push({ label: "Hoje à noite", hint: "20:00", onSelect: () => snoozeTo(t, { due_at: today(), due_time: "20:00" }, "hoje à noite") });
+    if (t.due_at !== tomorrow()) items.push({ label: "Amanhã", hint: dayHint(tomorrow()), onSelect: () => snoozeTo(t, { due_at: tomorrow() }, "amanhã") });
+    if (t.due_at !== mon) items.push({ label: "Próxima semana", hint: dayHint(mon), onSelect: () => snoozeTo(t, { due_at: mon }, `segunda, ${fmt(mon)}`) });
+    items.push({ label: "Escolher data…", onSelect: () => setOpenId(t.id) });
+    return items;
+  }
+  function openSnooze(e: MouseEvent<HTMLButtonElement>, t: Task) {
+    setMenu({ rect: e.currentTarget.getBoundingClientRect(), label: `Adiar ${t.title}`, items: snoozeItems(t) });
+  }
+  function rescheduleLate(e: MouseEvent<HTMLButtonElement>, list: Task[]) {
+    const to = (due: string, label: string) => () => {
+      const prev = list.map((t) => ({ t, due_at: t.due_at }));
+      list.forEach((t) => {
+        if (!inView({ ...t, due_at: due })) leave(t);
+        patch(t, { due_at: due });
+      });
+      toast(`${list.length} ${list.length === 1 ? "tarefa reagendada" : "tarefas reagendadas"} para ${label}`, {
+        onUndo: () => prev.forEach((p) => patch(p.t, { due_at: p.due_at })),
+      });
+    };
+    const mon = nextMondayIso();
+    setMenu({
+      rect: e.currentTarget.getBoundingClientRect(),
+      label: "Reagendar atrasadas",
+      items: [
+        { label: "Para hoje", hint: dayHint(today()), onSelect: to(today(), "hoje") },
+        { label: "Para amanhã", hint: dayHint(tomorrow()), onSelect: to(tomorrow(), "amanhã") },
+        { label: "Para a próxima semana", hint: dayHint(mon), onSelect: to(mon, `segunda, ${fmt(mon)}`) },
+      ],
+    });
+  }
+
   function remove(task: Task) {
     hide(task.id);
     toast("Tarefa excluída", {
@@ -210,6 +266,9 @@ export default function Tasks({ view }: { view: string }) {
               <span key={g} className="badge">#{g}</span>
             ))}
           </span>
+          {!t.done && !dormant && (
+            <button className="ghost" aria-haspopup="menu" onClick={(e) => openSnooze(e, t)}>Adiar</button>
+          )}
           <button className="ghost" aria-expanded={openId === t.id} onClick={() => setOpenId(openId === t.id ? null : t.id)}>
             Detalhes
           </button>
@@ -238,6 +297,21 @@ export default function Tasks({ view }: { view: string }) {
     dayStops.push(...finished.map((t) => stopOf(t, true)), ...open.map((t) => stopOf(t, false)));
   }
 
+  // Dia concluído: quando a última parada acende, a linha do dia comemora (pode ser desligado em Ajustes)
+  const dayDoneAll = dayStops.length > 0 && dayStops.every((s) => s.done);
+  useEffect(() => {
+    if (view !== "today" || loading) {
+      prevAllDone.current = null;
+      return;
+    }
+    if (prevAllDone.current === false && dayDoneAll && readAppearance().cheer) {
+      setCelebrate(true);
+      window.clearTimeout(celeTimer.current);
+      celeTimer.current = window.setTimeout(() => setCelebrate(false), 2200);
+    }
+    prevAllDone.current = dayDoneAll;
+  }, [dayDoneAll, view, loading]);
+
   const emptyCopy =
     q || activeTag
       ? { title: "Nenhuma tarefa encontrada.", hint: "Tente outra palavra ou limpe o filtro de etiqueta." }
@@ -258,7 +332,7 @@ export default function Tasks({ view }: { view: string }) {
         )}
       </div>
       {editingList && currentList && <ListEditor key={currentList.id} list={currentList} index={listIdx} onClose={() => setEditingList(false)} />}
-      {view === "today" && !loading && <DayLine stops={dayStops} />}
+      {view === "today" && !loading && <DayLine stops={dayStops} celebrate={celebrate} />}
 
       <form className="quick" onSubmit={add}>
         <input ref={inputRef} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Nova tarefa (ex.: pagar luz amanhã #casa !alta)" aria-label="Nova tarefa" enterKeyHint="done" />
@@ -303,7 +377,10 @@ export default function Tasks({ view }: { view: string }) {
         <>
           {late.length > 0 && (
             <>
-              <h3 className="group-label late">Atrasadas ({late.length})</h3>
+              <div className="grouphead">
+                <h3 className="group-label late">Atrasadas ({late.length})</h3>
+                <button className="ghost" aria-haspopup="menu" onClick={(e) => rescheduleLate(e, late.filter((t) => !leaving.has(t.id)))}>Reagendar</button>
+              </div>
               <ul className="list">{late.map(renderTask)}</ul>
               {rest.length > 0 && <h3 className="group-label">Hoje</h3>}
             </>
@@ -321,6 +398,7 @@ export default function Tasks({ view }: { view: string }) {
             : rest.length > 0 && <ul className="list">{rest.map(renderTask)}</ul>}
         </>
       )}
+      {menu && <Menu anchor={menu.rect} label={menu.label} items={menu.items} onClose={() => setMenu(null)} />}
       {openTask && (
         <TaskSheet key={openTask.id} task={openTask} lists={lists} allTags={allTags} patch={patch} remove={remove} onClose={() => setOpenId(null)} />
       )}

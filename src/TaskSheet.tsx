@@ -61,6 +61,7 @@ export default function TaskSheet({ task: t, lists, allTags, patch, remove, onCl
               {t.due_time && <button type="button" className="chipbtn clear" onClick={() => patch(t, { due_time: null })}>Remover horário</button>}
             </div>
           </div>
+          <div className="triple">
           <label>
             Prioridade
             <select value={t.priority} onChange={(e) => patch(t, { priority: Number(e.target.value) })}>
@@ -93,6 +94,7 @@ export default function TaskSheet({ task: t, lists, allTags, patch, remove, onCl
               ))}
             </select>
           </label>
+          </div>
           <div className="tagsfield">
             <span className="lbl">Etiquetas</span>
             <TagInput tags={t.tags ?? []} onChange={(tags) => patch(t, { tags })} suggestions={allTags} listId={`tags-task-${t.id}`} />

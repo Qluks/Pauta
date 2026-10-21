@@ -5,7 +5,7 @@ import Sheet from "./Sheet";
 import Sidebar from "./Sidebar";
 import CaptureSheet from "./CaptureSheet";
 
-type Props = { view: string; setView: (v: string) => void; onSignOut: () => void };
+type Props = { view: string; setView: (v: string) => void; onSignOut: () => void; onSearch: () => void; onSettings: () => void };
 
 const icon = (children: ReactNode) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -20,7 +20,7 @@ const ICONS = {
   plus: icon(<path d="M12 5v14M5 12h14" />),
 };
 
-export default function MobileNav({ view, setView, onSignOut }: Props) {
+export default function MobileNav({ view, setView, onSignOut, onSearch, onSettings }: Props) {
   const { tasks } = useData();
   const [menu, setMenu] = useState(false);
   const [capture, setCapture] = useState(false);
@@ -67,6 +67,14 @@ export default function MobileNav({ view, setView, onSignOut }: Props) {
                 close();
               }}
               onSignOut={onSignOut}
+              onSearch={() => {
+                close();
+                onSearch();
+              }}
+              onSettings={() => {
+                close();
+                onSettings();
+              }}
             />
           )}
         </Sheet>

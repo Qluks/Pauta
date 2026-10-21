@@ -5,9 +5,8 @@ import Mark from "./Mark";
 import { cv, listColor } from "./colors";
 import { LIST_COLS, useData } from "./data";
 import { isDormant, today } from "./util";
-import NotificationsPanel from "./Notifications";
 
-type Props = { view: string; setView: (v: string) => void; onSignOut: () => void; variant?: "side" | "sheet" };
+type Props = { view: string; setView: (v: string) => void; onSignOut: () => void; onSearch?: () => void; onSettings?: () => void; variant?: "side" | "sheet" };
 
 const VIEWS: { id: string; label: string; gap?: boolean }[] = [
   { id: "today", label: "Hoje" },
@@ -18,11 +17,10 @@ const VIEWS: { id: string; label: string; gap?: boolean }[] = [
   { id: "archive", label: "Arquivo" },
 ];
 
-export default function Sidebar({ view, setView, onSignOut, variant = "side" }: Props) {
+export default function Sidebar({ view, setView, onSignOut, onSearch, onSettings, variant = "side" }: Props) {
   const { tasks, notes, lists, attachments, setLists } = useData();
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [showReminders, setShowReminders] = useState(false);
 
   const t0 = today();
   const pending = tasks.filter((t) => !t.done && !isDormant(t));
@@ -74,11 +72,18 @@ export default function Sidebar({ view, setView, onSignOut, variant = "side" }: 
       <div className="side-head">
         <h1 className="brand"><Mark /> Pauta</h1>
         <div className="side-actions">
-          <button className="ghost" onClick={() => setShowReminders(true)}>Lembretes</button>
+          <button className="ghost" onClick={onSettings}>Ajustes</button>
           <button className="ghost" onClick={exportData} title="Baixar uma cópia dos seus dados (JSON)">Exportar</button>
           <button className="ghost" onClick={onSignOut}>Sair</button>
         </div>
       </div>
+
+      {onSearch && (
+        <button className="searchbtn" onClick={onSearch}>
+          <span>Buscar</span>
+          <kbd>Ctrl K</kbd>
+        </button>
+      )}
 
       <ul className="nav">
         {VIEWS.map((v) => (
@@ -113,7 +118,6 @@ export default function Sidebar({ view, setView, onSignOut, variant = "side" }: 
         </form>
       </div>
       {error && <p className="error">{error}</p>}
-      {showReminders && <NotificationsPanel onClose={() => setShowReminders(false)} />}
     </nav>
   );
 }

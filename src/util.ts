@@ -66,3 +66,14 @@ export function periodOf(due: string, now = new Date()): Period {
 export const doneToday = (t: Task) => !!t.done_at && isoDate(new Date(t.done_at)) === today();
 
 export const PRIORITY = ["Sem prioridade", "Baixa", "Média", "Alta"];
+
+// Próxima segunda-feira (sempre depois de hoje) e rótulo curto de data, como "seg 26/10"
+export function nextMondayIso(now = new Date()) {
+  const d = new Date(now);
+  d.setDate(d.getDate() + (((8 - d.getDay()) % 7) || 7));
+  return isoDate(d);
+}
+export function dayHint(iso: string) {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit" }).replace(/[.,]/g, "");
+}

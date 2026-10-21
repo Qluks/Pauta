@@ -4,7 +4,7 @@ import { cv } from "./colors";
 export type Stop = { id: string; done: boolean; late: boolean; color: string; title: string };
 
 // "Linha do dia": uma parada por tarefa de hoje. As concluídas vêm primeiro e o trilho avança até a última delas.
-export default function DayLine({ stops }: { stops: Stop[] }) {
+export default function DayLine({ stops, celebrate }: { stops: Stop[]; celebrate?: boolean }) {
   const total = stops.length;
   const done = stops.filter((s) => s.done).length;
   const shown = stops.slice(0, 14);
@@ -16,7 +16,7 @@ export default function DayLine({ stops }: { stops: Stop[] }) {
   const status = total === 0 ? "Dia livre" : done === total ? `Dia concluído · ${done} de ${total}` : `${done} de ${total} concluídas`;
 
   return (
-    <section className="dayline" aria-label="Linha do dia">
+    <section className={`dayline${celebrate ? " celebrate" : ""}`} aria-label="Linha do dia">
       <div className="dl-head">
         <span className="dl-date">{date}</span>
         <span className="dl-count" role="status">{status}</span>
@@ -29,7 +29,7 @@ export default function DayLine({ stops }: { stops: Stop[] }) {
             <span
               key={s.id}
               className={`dl-stop${s.done ? " on" : ""}${s.late ? " late" : ""}${i === nextIdx ? " next" : ""}`}
-              style={{ ...cv(s.color), "--p": `${n === 1 ? 0 : (i / (n - 1)) * 100}%` } as CSSProperties}
+              style={{ ...cv(s.color), "--p": `${n === 1 ? 0 : (i / (n - 1)) * 100}%`, "--k": i } as CSSProperties}
               title={s.title}
             />
           ))}

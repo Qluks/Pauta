@@ -5,7 +5,7 @@ import { cv } from "./colors";
 type Props = {
   title: string;
   onClose: () => void;
-  variant?: "side" | "bottom"; // side: painel à direita no PC e folha no celular · bottom: só folha (celular)
+  variant?: "dialog" | "bottom"; // dialog: janela centralizada no PC e folha no celular · bottom: só folha (celular)
   color?: string;
   header?: ReactNode;
   hideHead?: boolean;
@@ -14,7 +14,7 @@ type Props = {
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-export default function Sheet({ title, onClose, variant = "side", color, header, hideHead, children }: Props) {
+export default function Sheet({ title, onClose, variant = "dialog", color, header, hideHead, children }: Props) {
   const [closing, setClosing] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const drag = useRef<{ y: number; dy: number } | null>(null);
@@ -69,7 +69,9 @@ export default function Sheet({ title, onClose, variant = "side", color, header,
       vv?.removeEventListener("resize", update);
       vv?.removeEventListener("scroll", update);
       document.documentElement.style.removeProperty("--kb");
-      if (opener.current instanceof HTMLElement) opener.current.focus({ preventScroll: true });
+      // Devolve o foco a quem abriu a folha, a menos que outra janela (como a busca) já tenha pegado o foco
+      const a = document.activeElement;
+      if (opener.current instanceof HTMLElement && (!a || a === document.body)) opener.current.focus({ preventScroll: true });
     };
   }, []);
 

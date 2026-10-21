@@ -18,6 +18,13 @@
       href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;1,6..72,400&display=swap"
       rel="stylesheet"
     />
+    <script>
+      try {
+        var d = document.documentElement, t = localStorage.getItem("pauta.theme"), p = localStorage.getItem("pauta.paper");
+        if (t === "light" || t === "dark") d.dataset.theme = t;
+        if (p) d.dataset.paper = p;
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

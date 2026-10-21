@@ -16,7 +16,7 @@ const colorOf = (c: string | null) => (c === null ? "var(--rule)" : lineVar(Numb
 const EMPTY = { title: "", body: "", color: null as string | null, tags: [] as string[], checklist: [] as ChecklistItem[] };
 const clean = (items: ChecklistItem[]) => items.filter((i) => i.text.trim());
 
-export default function Notes({ view }: { view: string }) {
+export default function Notes({ view, request, onHandled }: { view: string; request?: { id: string; n: number } | null; onHandled?: () => void }) {
   const archive = view === "archive";
   const { notes, setNotes, attachments, setAttachments, purgeFiles, loading, hide, unhide } = useData();
   const toast = useToast();
@@ -71,6 +71,21 @@ export default function Notes({ view }: { view: string }) {
     window.addEventListener("pauta:new-note", open);
     return () => window.removeEventListener("pauta:new-note", open);
   }, [archive, activeTag]);
+
+  // Pedido da paleta de comandos: rolar até a nota e destacá-la
+  useEffect(() => {
+    if (!request || loading) return;
+    const id = request.id;
+    setTagFilter(null);
+    setQuery("");
+    window.setTimeout(() => {
+      const el = document.querySelector<HTMLElement>(`[data-note-id="${id}"]`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      el?.classList.add("spot");
+      window.setTimeout(() => el?.classList.remove("spot"), 1800);
+    }, 80);
+    onHandled?.();
+  }, [request, loading]);
 
   async function add(e?: FormEvent) {
     e?.preventDefault();
@@ -164,7 +179,7 @@ export default function Notes({ view }: { view: string }) {
   const card = (n: Note, i = 0) => {
     const count = attCount.get(n.id) ?? 0;
     return (
-      <article key={n.id} className="note" style={{ ...cv(colorOf(n.color)), "--i": Math.min(i, 8) } as CSSProperties} data-tinted={n.color !== null}>
+      <article key={n.id} data-note-id={n.id} className="note" style={{ ...cv(colorOf(n.color)), "--i": Math.min(i, 8) } as CSSProperties} data-tinted={n.color !== null}>
         {editingId === n.id ? (
           <>
             <input className="ntitle" autoFocus value={edit.title} onChange={(e) => setEdit({ ...edit, title: e.target.value })} placeholder="Título" aria-label="Título" />
