@@ -11,6 +11,20 @@ const ROWS: [string[], string][] = [
   [["Esc"], "Fechar painéis e janelas"],
 ];
 
+// Exemplos do que dá para escrever no campo de nova tarefa / nota
+const TIPS: [string, string][] = [
+  ["pagar luz amanhã às 15h", "prazo e horário"],
+  ["reunião sexta de manhã #ey prioridade alta", "período do dia, etiqueta e prioridade"],
+  ["dentista dia 5 de novembro na lista Saúde", "data por extenso e lista pelo nome (ou @saude)"],
+  ["ligar para o contador em 2 horas", "horário relativo (também: daqui a 30 minutos)"],
+  ["academia toda segunda", "repete toda semana (também: dias úteis, todo mês)"],
+  ["regar plantas de 3 em 3 dias", "intervalos: a cada 2 semanas, quinzenal, trimestral, anual"],
+  ["pagar internet todo dia 10", "todo mês, no dia 10"],
+  ["entregar relatório no fim do mês", "também: semana que vem, mês que vem, fim de semana"],
+  ["ler https://exemplo.com/artigo", "o link vira anexo da tarefa"],
+  ["Compras itens: leite, pão #casa cor verde fixar", "nota com checklist, etiqueta, cor e fixada"],
+];
+
 export default function ShortcutsHelp({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -19,8 +33,8 @@ export default function ShortcutsHelp({ onClose }: { onClose: () => void }) {
   }, [onClose]);
   return createPortal(
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="kb-title" onClick={(e) => e.stopPropagation()}>
-        <h2 id="kb-title">Atalhos de teclado</h2>
+      <div className="modal wide" role="dialog" aria-modal="true" aria-labelledby="kb-title" onClick={(e) => e.stopPropagation()}>
+        <h2 id="kb-title">Atalhos e dicas</h2>
         <dl className="kbd-list">
           {ROWS.map(([keys, text]) => (
             <div key={text} className="kbd-row">
@@ -29,6 +43,17 @@ export default function ShortcutsHelp({ onClose }: { onClose: () => void }) {
             </div>
           ))}
         </dl>
+        <hr />
+        <h3 className="modal-sub">Escreva do seu jeito</h3>
+        <p className="tips-intro">Ao criar uma tarefa, o app entende o texto e mostra abaixo o que reconheceu antes de salvar.</p>
+        <ul className="tips">
+          {TIPS.map(([example, what]) => (
+            <li key={example}>
+              <code>{example}</code>
+              <span>{what}</span>
+            </li>
+          ))}
+        </ul>
         <button className="ghost" autoFocus onClick={onClose}>Fechar</button>
       </div>
     </div>,

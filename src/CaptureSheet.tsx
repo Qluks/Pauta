@@ -2,54 +2,79 @@ import { useMemo, useState } from "react";
 import Sheet from "./Sheet";
 import { useData } from "./data";
 import { useAddTask } from "./addTask";
+import { useAddNote } from "./addNote";
 import { useToast } from "./Toast";
-import { parseQuick, RECURRENCE_LABEL } from "./parse";
-import { describeDate, PRIORITY } from "./util";
+import { parseNote, parseQuick } from "./parse";
+import { hasNotePreview, hasTaskPreview, NotePreview, TaskPreview } from "./Preview";
 
 export default function CaptureSheet({ view, onClose }: { view: string; onClose: () => void }) {
   const { lists } = useData();
   const addTask = useAddTask();
+  const addNote = useAddNote();
   const toast = useToast();
+  const [mode, setMode] = useState<"task" | "note">("task");
   const [text, setText] = useState("");
-  const parsed = useMemo(() => parseQuick(text, lists), [text, lists]);
+  const task = useMemo(() => parseQuick(text, lists), [text, lists]);
+  const note = useMemo(() => parseNote(text), [text]);
   const currentList = lists.find((l) => `list:${l.id}` === view);
-  const hasPreview = text.trim() && (parsed.due_at || parsed.priority || parsed.listId || parsed.tags.length || parsed.recurrence);
+  const empty = mode === "task" ? !task.title : !note.title && !note.body && note.checklist.length === 0;
+
+  function submit(close: () => void) {
+    if (mode === "task") {
+      const r = addTask(text, { view, listId: currentList?.id ?? null });
+      if (!r) return;
+      close();
+      toast(`“${r.title}” adicionada`);
+      r.done.then((m) => m && toast(`Atenção: ${m}`));
+    } else {
+      const r = addNote(text);
+      if (!r) return;
+      close();
+      toast(`Nota “${r.title}” criada`);
+      r.done.then((m) => m && toast(`Atenção: ${m}`));
+    }
+  }
 
   return (
-    <Sheet variant="bottom" title="Nova tarefa" onClose={onClose}>
+    <Sheet variant="bottom" title={mode === "task" ? "Nova tarefa" : "Nova nota"} onClose={onClose}>
       {(close) => (
         <form
           className="capture"
           onSubmit={(e) => {
             e.preventDefault();
-            const r = addTask(text, { view, listId: currentList?.id ?? null });
-            if (!r) return;
-            close();
-            toast(`“${r.title}” adicionada`);
-            r.done.then((m) => m && toast(`Não foi possível salvar: ${m}`));
+            submit(close);
           }}
         >
-          <input
-            autoFocus
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Ex.: pagar luz amanhã #casa !alta"
-            enterKeyHint="done"
-            autoCapitalize="sentences"
-            aria-label="Nova tarefa"
-          />
-          {hasPreview && (
-            <div className="preview" aria-live="polite">
-              {parsed.due_at && <span className="chip static">Prazo: {describeDate(parsed.due_at)}{parsed.due_time ? ` às ${parsed.due_time}` : ""}</span>}
-              {parsed.recurrence && <span className="chip static">{RECURRENCE_LABEL[parsed.recurrence]}</span>}
-              {parsed.priority > 0 && <span className="chip static">Prioridade: {PRIORITY[parsed.priority]}</span>}
-              {parsed.listId && <span className="chip static">Lista: {lists.find((l) => l.id === parsed.listId)?.name}</span>}
-              {parsed.tags.map((g) => (
-                <span key={g} className="chip static">#{g}</span>
-              ))}
-            </div>
+          <div className="seg-group" role="group" aria-label="O que criar">
+            <button type="button" className="seg" aria-pressed={mode === "task"} onClick={() => setMode("task")}>Tarefa</button>
+            <button type="button" className="seg" aria-pressed={mode === "note"} onClick={() => setMode("note")}>Nota</button>
+          </div>
+          {mode === "task" ? (
+            <input
+              key="task"
+              autoFocus
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="Ex.: pagar luz amanhã às 15h #casa"
+              enterKeyHint="done"
+              autoCapitalize="sentences"
+              aria-label="Nova tarefa"
+            />
+          ) : (
+            <textarea
+              key="note"
+              autoFocus
+              rows={4}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => (e.ctrlKey || e.metaKey) && e.key === "Enter" && submit(close)}
+              placeholder={"Título na primeira linha\nCompras itens: leite, pão #casa cor verde"}
+              aria-label="Nova nota"
+            />
           )}
-          <button className="primary" disabled={!parsed.title}>Adicionar</button>
+          {text.trim() && mode === "task" && hasTaskPreview(task) && <TaskPreview parsed={task} lists={lists} />}
+          {text.trim() && mode === "note" && hasNotePreview(note) && <NotePreview parsed={note} />}
+          <button className="primary" disabled={empty}>Adicionar</button>
         </form>
       )}
     </Sheet>

@@ -46,7 +46,7 @@ export default function CommandPalette({ view, setView, onClose, onOpenTask, onO
         },
       },
       { id: "a-set", group: "Ações", label: "Ajustes (aparência e lembretes)", run: onSettings },
-      { id: "a-help", group: "Ações", label: "Atalhos de teclado", hint: "?", run: onHelp },
+      { id: "a-help", group: "Ações", label: "Atalhos e dicas de escrita", hint: "?", run: onHelp },
     ];
     const screens: Item[] = [
       ...SCREENS.map(([v, l]) => ({ id: `s-${v}`, group: "Telas", label: l, run: () => setView(v) })),

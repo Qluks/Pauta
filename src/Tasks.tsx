@@ -5,7 +5,8 @@ import { cv, listColor } from "./colors";
 import { useData } from "./data";
 import { useToast } from "./Toast";
 import { dayHint, describeDate, doneToday, fmt, isDormant, nextMondayIso, periodOf, PERIODS, PRIORITY, reminderPassed, today, tomorrow } from "./util";
-import { nextDue, parseQuick, RECURRENCE_LABEL, snoozeUntil } from "./parse";
+import { nextDue, parseQuick, recurrenceLabel, snoozeUntil } from "./parse";
+import { hasTaskPreview, TaskPreview } from "./Preview";
 import ListEditor from "./ListEditor";
 import TaskSheet from "./TaskSheet";
 import { useAddTask } from "./addTask";
@@ -255,7 +256,7 @@ export default function Tasks({ view, openRequest, onHandled }: { view: string; 
             {t.priority > 0 && <span className={`badge p${t.priority}`}>{PRIORITY[t.priority]}</span>}
             {dormant && t.snoozed_until && <span className="badge">Volta {t.snoozed_until === tomorrow() ? "amanhã" : "em " + fmt(t.snoozed_until)}</span>}
             {t.due_at && <span className={`badge${overdue ? " late" : ""}`}>{overdue ? "Atrasada " : ""}{fmt(t.due_at)}{t.due_time ? ` ${t.due_time.slice(0, 5)}` : ""}</span>}
-            {t.recurrence && <span className="badge">{RECURRENCE_LABEL[t.recurrence] ?? t.recurrence}</span>}
+            {t.recurrence && <span className="badge">{recurrenceLabel(t.recurrence)}</span>}
             {ln && !currentList && <span className="badge list">{ln}</span>}
             {(attCount.get(t.id) ?? 0) > 0 && (
               <button type="button" className="badge btn" onClick={() => setOpenId(t.id)}>
@@ -279,7 +280,6 @@ export default function Tasks({ view, openRequest, onHandled }: { view: string; 
 
   const heading = TITLES[view] ?? currentList?.name ?? "Tarefas";
   const headColor = currentList ? listColor(currentList, listIdx) : "var(--ink)";
-  const hasPreview = title.trim() && (parsed.due_at || parsed.priority || parsed.listId || parsed.tags.length || parsed.recurrence);
   const late = view === "today" ? items.filter((t) => (orig(t).due_at ?? "") < t0) : [];
   const rest = view === "today" ? items.filter((t) => (orig(t).due_at ?? "") >= t0) : items;
 
@@ -338,17 +338,7 @@ export default function Tasks({ view, openRequest, onHandled }: { view: string; 
         <input ref={inputRef} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Nova tarefa (ex.: pagar luz amanhã #casa !alta)" aria-label="Nova tarefa" enterKeyHint="done" />
         <button className="primary">Adicionar</button>
       </form>
-      {hasPreview && (
-        <div className="preview" aria-live="polite">
-          {parsed.due_at && <span className="chip static">Prazo: {describeDate(parsed.due_at)}{parsed.due_time ? ` às ${parsed.due_time}` : ""}</span>}
-          {parsed.recurrence && <span className="chip static">{RECURRENCE_LABEL[parsed.recurrence]}</span>}
-          {parsed.priority > 0 && <span className="chip static">Prioridade: {PRIORITY[parsed.priority]}</span>}
-          {parsed.listId && <span className="chip static">Lista: {lists.find((l) => l.id === parsed.listId)?.name}</span>}
-          {parsed.tags.map((g) => (
-            <span key={g} className="chip static">#{g}</span>
-          ))}
-        </div>
-      )}
+      {title.trim() && hasTaskPreview(parsed) && <TaskPreview parsed={parsed} lists={lists} />}
 
       <input className="search" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar tarefas" aria-label="Buscar tarefas" />
 

@@ -560,3 +560,13 @@ kbd { padding: 1px 6px; border: 1px solid var(--rule); border-bottom-width: 2px;
   40% { transform: scale(1.55); box-shadow: 0 0 0 6px color-mix(in srgb, var(--c, var(--ink)) 35%, transparent); }
   100% { transform: scale(1); }
 }
+
+/* ---- Escrita rápida: dicas e nota na captura ---- */
+.modal.wide { width: min(640px, 100%); }
+.tips-intro { color: var(--muted); }
+.tips { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.tips li { display: grid; gap: 2px; }
+.tips code { padding: 3px 8px; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); font: 500 0.9rem var(--font-ui); overflow-wrap: anywhere; justify-self: start; }
+.tips span { color: var(--muted); font: 400 0.95rem var(--font-text); }
+.capture textarea { width: 100%; padding: 12px; background: var(--surface); border: 1.5px solid var(--ink); border-radius: 8px; resize: vertical; font: 400 1.05rem var(--font-text); }
+.capture .seg-group { margin-bottom: 2px; }

@@ -5,7 +5,9 @@ import Sheet from "./Sheet";
 import TagInput from "./Tags";
 import Attachments from "./Attachments";
 import { PRIORITY, today, tomorrow } from "./util";
-import { RECURRENCE_LABEL } from "./parse";
+import { recurrenceLabel } from "./parse";
+
+const RECURRENCE_PRESETS = ["daily", "weekdays", "weekly", "weekly:2", "monthly", "monthly:3", "monthly:12"];
 
 type Props = {
   task: Task;
@@ -80,8 +82,8 @@ export default function TaskSheet({ task: t, lists, allTags, patch, remove, onCl
               }}
             >
               <option value="">Não repete</option>
-              {Object.entries(RECURRENCE_LABEL).map(([k, label]) => (
-                <option key={k} value={k}>{label}</option>
+              {[...RECURRENCE_PRESETS, ...(t.recurrence && !RECURRENCE_PRESETS.includes(t.recurrence) ? [t.recurrence] : [])].map((k) => (
+                <option key={k} value={k}>{recurrenceLabel(k)}</option>
               ))}
             </select>
           </label>
