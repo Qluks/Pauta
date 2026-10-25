@@ -8,13 +8,14 @@ type Props = {
   variant?: "dialog" | "bottom"; // dialog: janela centralizada no PC e folha no celular · bottom: só folha (celular)
   color?: string;
   header?: ReactNode;
+  footer?: ReactNode;
   hideHead?: boolean;
   children: ReactNode | ((close: () => void) => ReactNode);
 };
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-export default function Sheet({ title, onClose, variant = "dialog", color, header, hideHead, children }: Props) {
+export default function Sheet({ title, onClose, variant = "dialog", color, header, footer, hideHead, children }: Props) {
   const [closing, setClosing] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const drag = useRef<{ y: number; dy: number } | null>(null);
@@ -111,7 +112,7 @@ export default function Sheet({ title, onClose, variant = "dialog", color, heade
     <div className={`sheet-backdrop v-${variant}${closing ? " closing" : ""}`} onClick={close}>
       <div
         ref={ref}
-        className={`sheet v-${variant}${closing ? " closing" : ""}`}
+        className={`sheet v-${variant}${footer ? " has-footer" : ""}${closing ? " closing" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -134,6 +135,7 @@ export default function Sheet({ title, onClose, variant = "dialog", color, heade
           </div>
         )}
         <div className="sheet-body">{typeof children === "function" ? children(close) : children}</div>
+        {footer && <div className="sheet-footer">{footer}</div>}
       </div>
     </div>,
     document.body

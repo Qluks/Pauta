@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useId, useMemo, useState } from "react";
 import Sheet from "./Sheet";
 import { useData } from "../lib/data";
 import { useAddTask, type TaskDraft } from "../features/tasks/addTask";
@@ -29,6 +29,7 @@ export default function CaptureSheet({ view, mode, onClose, onCreated, initialTa
   const addNote = useAddNote();
   const toast = useToast();
   const currentList = lists.find((list) => `list:${list.id}` === view);
+  const formId = useId();
   const taskTags = useMemo(() => [...new Set(tasks.flatMap((task) => task.tags ?? []))].sort(), [tasks]);
   const noteTags = useMemo(() => [...new Set(notes.flatMap((note) => note.tags ?? []))].sort(), [notes]);
   const taskKey = ownerId ? `pauta-draft:${ownerId}:task` : null;
@@ -110,8 +111,20 @@ export default function CaptureSheet({ view, mode, onClose, onCreated, initialTa
   }
 
   return (
-    <Sheet title={isTask ? "Nova tarefa" : "Nova nota"} onClose={onClose}>
-      <form className={`create-form create-form-${mode}`} onSubmit={submit}>
+    <Sheet
+      title={isTask ? "Nova tarefa" : "Nova nota"}
+      onClose={onClose}
+      footer={
+        <div className="create-actions">
+          {(isTask ? taskReady : noteReady) && <button type="button" className="ghost" onClick={discardDraft}>Descartar rascunho</button>}
+          <button type="button" className="ghost" onClick={onClose}>Cancelar</button>
+          <button type="submit" form={formId} className="primary" disabled={isTask ? !taskReady : !noteReady}>
+            {isTask ? "Criar tarefa" : "Criar nota"}
+          </button>
+        </div>
+      }
+    >
+      <form id={formId} className={`create-form create-form-${mode}`} onSubmit={submit}>
         {draftMessage && <p className="draft-status" role="status">{draftMessage}</p>}
         {isTask ? (
           <>
@@ -196,13 +209,6 @@ export default function CaptureSheet({ view, mode, onClose, onCreated, initialTa
             </label>
           </>
         )}
-        <div className="create-actions">
-          {(isTask ? taskReady : noteReady) && <button type="button" className="ghost" onClick={discardDraft}>Descartar rascunho</button>}
-          <button type="button" className="ghost" onClick={onClose}>Cancelar</button>
-          <button type="submit" className="primary" disabled={isTask ? !taskReady : !noteReady}>
-            {isTask ? "Criar tarefa" : "Criar nota"}
-          </button>
-        </div>
       </form>
     </Sheet>
   );
