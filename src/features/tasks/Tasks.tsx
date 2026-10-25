@@ -45,10 +45,12 @@ export default function Tasks({ view, openRequest, onHandled }: { view: string; 
   const [menu, setMenu] = useState<{ rect: DOMRect; items: MenuItem[]; label: string } | null>(null);
   const [celebrate, setCelebrate] = useState(false);
   const [weekStart, setWeekStart] = useState(() => weekStartOf(today()));
+  const [mobileWeekDate, setMobileWeekDate] = useState(() => today());
   const [listFilter, setListFilter] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");
   const [dueFilter, setDueFilter] = useState<SavedTaskFilter["due"]>("any");
   const [filterName, setFilterName] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createDueAt, setCreateDueAt] = useState<string | null>(null);
   const savedFilters = useSavedTaskFilters();
@@ -71,6 +73,9 @@ export default function Tasks({ view, openRequest, onHandled }: { view: string; 
     setCreateDueAt(dueAt ?? null);
     setCreating(true);
   }
+  useEffect(() => {
+    setMobileWeekDate(t0 >= weekStart && t0 <= weekEnd ? t0 : weekStart);
+  }, [weekStart]);
   useEffect(() => {
     if (openId && !tasks.some((t) => t.id === openId)) setOpenId(null); // a tarefa foi excluída
   }, [openId, tasks]);
@@ -129,6 +134,7 @@ export default function Tasks({ view, openRequest, onHandled }: { view: string; 
   })();
   const allTags = [...new Set(tasks.flatMap((t) => t.tags ?? []))].sort();
   const activeTag = tagFilter;
+  const activeFilterCount = Number(!!listFilter) + Number(!!priorityFilter) + Number(dueFilter !== "any") + Number(!!activeTag);
   const q = query.trim().toLowerCase();
   const items = base
     .filter((t) => !activeTag || (t.tags ?? []).includes(activeTag))
@@ -284,6 +290,14 @@ export default function Tasks({ view, openRequest, onHandled }: { view: string; 
   function openSnooze(e: MouseEvent<HTMLButtonElement>, t: Task) {
     setMenu({ rect: e.currentTarget.getBoundingClientRect(), label: `Adiar ${t.title}`, items: snoozeItems(t) });
   }
+  function openTaskActions(e: MouseEvent<HTMLButtonElement>, task: Task) {
+    const items: MenuItem[] = [
+      ...(!task.done && !isDormant(task) ? snoozeItems(task) : []),
+      { label: "Editar tarefa", onSelect: () => { setEditingId(task.id); setEditText(task.title); } },
+      { label: openId === task.id ? "Fechar detalhes" : "Ver detalhes", onSelect: () => setOpenId(openId === task.id ? null : task.id) },
+    ];
+    setMenu({ rect: e.currentTarget.getBoundingClientRect(), label: `Ações da tarefa ${task.title}`, items });
+  }
   function rescheduleLate(e: MouseEvent<HTMLButtonElement>, list: Task[]) {
     const to = (due: string, label: string) => () => {
       const prev = list.map((t) => ({ t, due_at: t.due_at }));
@@ -348,14 +362,38 @@ export default function Tasks({ view, openRequest, onHandled }: { view: string; 
         style={{ ...cv(color), "--i": Math.min(index, 10) } as CSSProperties}
       >
         <div className="row">
-          <input type="checkbox" checked={t.done || dormant} onChange={() => toggle(t)} aria-label={`Concluir ${t.title}`} />
-          {editingId === t.id ? (
-            <input className="edit" autoFocus value={editText} onChange={(e) => setEditText(e.target.value)} onKeyDown={(e) => onEditKey(e, t)} onBlur={() => saveEdit(t)} aria-label="Editar título da tarefa" />
-          ) : (
-            <span className="title" onDoubleClick={() => { setEditingId(t.id); setEditText(t.title); }} title="Clique duas vezes para editar">
-              <span className="ttext">{t.title}</span>
-            </span>
-          )}
+          <div className="task-primary">
+            <input type="checkbox" checked={t.done || dormant} onChange={() => toggle(t)} aria-label={`Concluir ${t.title}`} />
+            {editingId === t.id ? (
+              <input className="edit" autoFocus value={editText} onChange={(e) => setEditText(e.target.value)} onKeyDown={(e) => onEditKey(e, t)} onBlur={() => saveEdit(t)} aria-label="Editar título da tarefa" />
+            ) : (
+              <span className="title" onDoubleClick={() => { setEditingId(t.id); setEditText(t.title); }} title="Clique duas vezes para editar">
+                <span className="ttext">{t.title}</span>
+              </span>
+            )}
+            <div className="task-actions">
+              <button type="button" className="ghost mobile-task-more" aria-label={`Mais ações para ${t.title}`} aria-haspopup="menu" onClick={(event) => openTaskActions(event, t)}>
+                <span aria-hidden="true">•••</span>
+                <span>Mais</span>
+              </button>
+              {!t.done && !dormant && (
+                <button className="ghost" aria-haspopup="menu" onClick={(e) => openSnooze(e, t)}>Adiar</button>
+              )}
+              <button
+                className="ghost"
+                onClick={() => {
+                  setEditingId(t.id);
+                  setEditText(t.title);
+                }}
+                aria-label={`Editar tarefa ${t.title}`}
+              >
+                Editar
+              </button>
+              <button className="ghost" aria-expanded={openId === t.id} onClick={() => setOpenId(openId === t.id ? null : t.id)}>
+                Detalhes
+              </button>
+            </div>
+          </div>
           <span className="badges">
             {t.priority > 0 && <span className={`badge p${t.priority}`}>{PRIORITY[t.priority]}</span>}
             {dormant && t.snoozed_until && <span className="badge">Volta {t.snoozed_until === tomorrow() ? "amanhã" : "em " + fmt(t.snoozed_until)}</span>}
@@ -376,22 +414,6 @@ export default function Tasks({ view, openRequest, onHandled }: { view: string; 
               <span key={g} className="badge">#{g}</span>
             ))}
           </span>
-          {!t.done && !dormant && (
-            <button className="ghost" aria-haspopup="menu" onClick={(e) => openSnooze(e, t)}>Adiar</button>
-          )}
-          <button
-            className="ghost"
-            onClick={() => {
-              setEditingId(t.id);
-              setEditText(t.title);
-            }}
-            aria-label={`Editar tarefa ${t.title}`}
-          >
-            Editar
-          </button>
-          <button className="ghost" aria-expanded={openId === t.id} onClick={() => setOpenId(openId === t.id ? null : t.id)}>
-            Detalhes
-          </button>
         </div>
       </li>
     );
@@ -414,6 +436,25 @@ export default function Tasks({ view, openRequest, onHandled }: { view: string; 
       .filter((t) => !t.done && !isDormant(t) && !!t.due_at && t.due_at <= t0)
       .sort((a, b) => (a.due_at ?? "").localeCompare(b.due_at ?? "") || (a.due_time ?? "99:99").localeCompare(b.due_time ?? "99:99") || b.priority - a.priority);
     dayStops.push(...finished.map((t) => stopOf(t, true)), ...open.map((t) => stopOf(t, false)));
+  }
+  function calendarEvents(date: string) {
+    const group = items.filter((task) => orig(task).due_at === date);
+    if (!group.length) return <p className="calendar-empty">Sem tarefas para este dia.</p>;
+    return (
+      <ul className="calendar-events">
+        {group.map((task) => {
+          const taskList = lists.find((list) => list.id === task.list_id);
+          const listIndex = lists.findIndex((list) => list.id === task.list_id);
+          return (
+            <li key={task.id} className={`calendar-event${task.done ? " is-done" : ""}`} style={cv(taskList ? listColor(taskList, listIndex) : "var(--ink)")}>
+              <input type="checkbox" checked={task.done} onChange={() => toggle(task)} aria-label={`Concluir ${task.title}`} />
+              <button type="button" className="calendar-event-title" onClick={() => setOpenId(task.id)} title={task.title}>{task.title}</button>
+              {task.due_time && <time>{task.due_time.slice(0, 5)}</time>}
+            </li>
+          );
+        })}
+      </ul>
+    );
   }
 
   // Dia concluído: quando a última parada acende, a linha do dia comemora (pode ser desligado em Ajustes)
@@ -466,7 +507,12 @@ export default function Tasks({ view, openRequest, onHandled }: { view: string; 
 
       <input className="search" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar tarefas" aria-label="Buscar tarefas" />
 
-      <div className="task-filters" role="group" aria-label="Filtros de tarefas">
+      <div className={`task-filters${filtersOpen ? " is-open" : ""}`} role="group" aria-label="Filtros de tarefas">
+        <button type="button" className="mobile-filter-toggle" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((open) => !open)}>
+          <span>Filtros</span>
+          {activeFilterCount > 0 && <span className="active-filter">{activeFilterCount}</span>}
+          <span className="filter-chevron" aria-hidden="true">{filtersOpen ? "−" : "+"}</span>
+        </button>
         <label>
           <span className="sr-only">Filtrar por lista</span>
           <select value={listFilter} onChange={(e) => setListFilter(e.target.value)} aria-label="Filtrar por lista">
@@ -495,18 +541,17 @@ export default function Tasks({ view, openRequest, onHandled }: { view: string; 
           <input value={filterName} onChange={(e) => setFilterName(e.target.value)} placeholder="Nome do filtro" aria-label="Nome do filtro salvo" />
           <button type="submit" className="chipbtn" disabled={!filterName.trim()}>Salvar filtro</button>
         </form>
+        {tagCounts.length > 0 && (
+          <div className="task-filter-tags tagbar" role="group" aria-label="Filtrar por etiqueta">
+            <button className="tagchip" aria-pressed={activeTag === null} onClick={() => setTagFilter(null)}>Todas</button>
+            {tagCounts.map(([g, c]) => (
+              <button key={g} className="tagchip" aria-pressed={activeTag === g} onClick={() => setTagFilter(activeTag === g ? null : g)}>
+                #{g} <span>{c}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
-
-      {tagCounts.length > 0 && (
-        <div className="tagbar" role="group" aria-label="Filtrar por etiqueta">
-          <button className="tagchip" aria-pressed={activeTag === null} onClick={() => setTagFilter(null)}>Todas</button>
-          {tagCounts.map(([g, c]) => (
-            <button key={g} className="tagchip" aria-pressed={activeTag === g} onClick={() => setTagFilter(activeTag === g ? null : g)}>
-              #{g} <span>{c}</span>
-            </button>
-          ))}
-        </div>
-      )}
 
       {(error || loadError) && (
         <p className="error" role="alert">
@@ -535,35 +580,49 @@ export default function Tasks({ view, openRequest, onHandled }: { view: string; 
             </>
           )}
           {view === "week" ? (
-            <div className="calendar-week" role="region" aria-label={`Semana de ${fmt(weekStart)} a ${fmt(weekEnd)}`}>
-              {weekDates.map((date) => {
-                const group = items.filter((task) => orig(task).due_at === date);
-                const dayName = new Date(`${date}T12:00:00`).toLocaleDateString("pt-BR", { weekday: "short" });
-                const isToday = date === t0;
-                return (
-                  <section key={date} className={`calendar-cell${isToday ? " is-today" : ""}`} aria-label={`${dayName}, ${fmt(date)}${isToday ? ", hoje" : ""}`}>
-                    <header className="calendar-cell-head">
-                      <div><span>{dayName.replace(".", "")}</span><strong>{new Date(`${date}T12:00:00`).getDate()}</strong></div>
-                      <button type="button" className="calendar-add" aria-label={`Criar tarefa em ${fmt(date)}`} onClick={() => startCreating(date)}>+</button>
-                    </header>
-                    {group.length > 0 ? (
-                      <ul className="calendar-events">
-                        {group.map((task) => {
-                          const taskList = lists.find((list) => list.id === task.list_id);
-                          const listIndex = lists.findIndex((list) => list.id === task.list_id);
-                          return (
-                            <li key={task.id} className={`calendar-event${task.done ? " is-done" : ""}`} style={cv(taskList ? listColor(taskList, listIndex) : "var(--ink)")}>
-                              <input type="checkbox" checked={task.done} onChange={() => toggle(task)} aria-label={`Concluir ${task.title}`} />
-                              <button type="button" className="calendar-event-title" onClick={() => setOpenId(task.id)} title={task.title}>{task.title}</button>
-                              {task.due_time && <time>{task.due_time.slice(0, 5)}</time>}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    ) : <p className="calendar-empty">Sem tarefas</p>}
-                  </section>
-                );
-              })}
+            <div className="calendar-week" aria-label={`Semana de ${fmt(weekStart)} a ${fmt(weekEnd)}`}>
+              <div className="calendar-mobile-picker" role="group" aria-label="Escolher dia da semana">
+                {weekDates.map((date) => {
+                  const dayName = new Date(`${date}T12:00:00`).toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "");
+                  const dayCount = items.filter((task) => orig(task).due_at === date).length;
+                  return (
+                    <button
+                      key={date}
+                      type="button"
+                      className="calendar-mobile-date"
+                      aria-pressed={mobileWeekDate === date}
+                      aria-label={`${dayName}, ${fmt(date)}${date === t0 ? ", hoje" : ""}, ${dayCount} tarefas`}
+                      onClick={() => setMobileWeekDate(date)}
+                    >
+                      <span>{dayName}</span>
+                      <strong>{new Date(`${date}T12:00:00`).getDate()}</strong>
+                      <i aria-hidden="true" className={dayCount ? "has-events" : ""} />
+                    </button>
+                  );
+                })}
+              </div>
+              <section className="calendar-mobile-agenda" aria-label={`Tarefas de ${fmt(mobileWeekDate)}`}>
+                <header className="calendar-mobile-agenda-head">
+                  <h3>{new Date(`${mobileWeekDate}T12:00:00`).toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })}</h3>
+                  <button type="button" className="calendar-add" aria-label={`Criar tarefa em ${fmt(mobileWeekDate)}`} onClick={() => startCreating(mobileWeekDate)}>+</button>
+                </header>
+                {calendarEvents(mobileWeekDate)}
+              </section>
+              <div className="calendar-desktop-grid">
+                {weekDates.map((date) => {
+                  const dayName = new Date(`${date}T12:00:00`).toLocaleDateString("pt-BR", { weekday: "short" });
+                  const isToday = date === t0;
+                  return (
+                    <section key={date} className={`calendar-cell${isToday ? " is-today" : ""}`} aria-label={`${dayName}, ${fmt(date)}${isToday ? ", hoje" : ""}`}>
+                      <header className="calendar-cell-head">
+                        <div><span>{dayName.replace(".", "")}</span><strong>{new Date(`${date}T12:00:00`).getDate()}</strong></div>
+                        <button type="button" className="calendar-add" aria-label={`Criar tarefa em ${fmt(date)}`} onClick={() => startCreating(date)}>+</button>
+                      </header>
+                      {calendarEvents(date)}
+                    </section>
+                  );
+                })}
+              </div>
             </div>
           )
             : view === "upcoming"

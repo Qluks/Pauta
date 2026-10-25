@@ -1,4 +1,4 @@
-import { CSSProperties, KeyboardEvent, PointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, KeyboardEvent, MouseEvent, PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import type { ChecklistItem, Note } from "../../lib/types";
 import { cv, lineVar } from "../../lib/colors";
@@ -13,6 +13,7 @@ import { NotesSkeleton } from "../../components/Skeleton";
 import EmptyState from "../../components/EmptyState";
 import Sheet from "../../components/Sheet";
 import CaptureSheet from "../../components/CaptureSheet";
+import Menu, { type MenuItem } from "../../components/Menu";
 
 const colorOf = (c: string | null) => (c === null ? "var(--rule)" : lineVar(Number(c)));
 const clean = (items: ChecklistItem[]) => items.filter((i) => i.text.trim());
@@ -24,14 +25,16 @@ export default function Notes({ view, request, onHandled }: { view: string; requ
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [tagFiltersOpen, setTagFiltersOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [edit, setEdit] = useState({ title: "", body: "", tags: [] as string[], checklist: [] as ChecklistItem[] });
+  const [edit, setEdit] = useState({ title: "", body: "", tags: [] as string[], checklist: [] as ChecklistItem[], color: null as string | null });
   const [attOpen, setAttOpen] = useState<string | null>(null);
   const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
   const [draggingNote, setDraggingNote] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [reorderingNotes, setReorderingNotes] = useState(false);
+  const [noteMenu, setNoteMenu] = useState<{ anchor: DOMRect; label: string; items: MenuItem[] } | null>(null);
   const noteDragRef = useRef<{ id: string; group: "pinned" | "other" | "archive"; pointerId: number } | null>(null);
 
   const attCount = new Map<string, number>();
@@ -119,7 +122,7 @@ export default function Notes({ view, request, onHandled }: { view: string; requ
 
   function startEdit(n: Note) {
     setEditingId(n.id);
-    setEdit({ title: n.title ?? "", body: n.body ?? "", tags: n.tags ?? [], checklist: n.checklist ?? [] });
+    setEdit({ title: n.title ?? "", body: n.body ?? "", tags: n.tags ?? [], checklist: n.checklist ?? [], color: n.color });
   }
   function saveEdit(n: Note) {
     setEditingId(null);
@@ -130,8 +133,19 @@ export default function Notes({ view, request, onHandled }: { view: string; requ
       title !== (n.title ?? "") ||
       body !== (n.body ?? "") ||
       !sameTags(edit.tags, n.tags ?? []) ||
-      JSON.stringify(checklist) !== JSON.stringify(n.checklist ?? []);
-    if (changed) patch(n, { title, body, tags: edit.tags, checklist });
+      JSON.stringify(checklist) !== JSON.stringify(n.checklist ?? []) ||
+      edit.color !== n.color;
+    if (changed) patch(n, { title, body, tags: edit.tags, checklist, color: edit.color });
+  }
+  function openNoteMenu(event: MouseEvent<HTMLButtonElement>, note: Note, count: number) {
+    const items: MenuItem[] = [
+      { label: "Editar nota", onSelect: () => startEdit(note) },
+      { label: attOpen === note.id ? "Fechar anexos" : count ? `Ver anexos (${count})` : "Anexar arquivo ou link", onSelect: () => setAttOpen(attOpen === note.id ? null : note.id) },
+    ];
+    if (!archive) items.push({ label: note.pinned ? "Desafixar nota" : "Fixar nota", onSelect: () => patch(note, { pinned: !note.pinned }) });
+    items.push({ label: note.archived ? "Desarquivar nota" : "Arquivar nota", onSelect: () => archiveToggle(note) });
+    items.push({ label: "Excluir nota", onSelect: () => remove(note) });
+    setNoteMenu({ anchor: event.currentTarget.getBoundingClientRect(), label: `Ações da nota ${note.title || "sem título"}`, items });
   }
   function toggleItem(n: Note, id: string) {
     patch(n, { checklist: (n.checklist ?? []).map((i) => (i.id === id ? { ...i, done: !i.done } : i)) }, false);
@@ -228,6 +242,10 @@ export default function Notes({ view, request, onHandled }: { view: string; requ
             <textarea className="nbody" rows={5} value={edit.body} onChange={(e) => setEdit({ ...edit, body: e.target.value })} onKeyDown={(e) => ctrlEnter(e, () => saveEdit(n))} placeholder="Nota" aria-label="Texto da nota" />
             <ChecklistEditor items={edit.checklist} onChange={(checklist) => setEdit({ ...edit, checklist })} />
             <TagInput tags={edit.tags} onChange={(tags) => setEdit({ ...edit, tags })} suggestions={allTagNames} listId="tags-edit" />
+            <div className="note-edit-color">
+              <span className="lbl">Cor</span>
+              <Swatches value={edit.color} onPick={(color) => setEdit({ ...edit, color })} />
+            </div>
             <div className="nactions">
               <button className="primary small" onClick={() => saveEdit(n)}>Salvar</button>
               <button className="ghost" onClick={() => setEditingId(null)}>Cancelar</button>
@@ -257,55 +275,62 @@ export default function Notes({ view, request, onHandled }: { view: string; requ
             )}
             {expanded && <ChecklistView items={checklist} onToggle={(id) => toggleItem(n, id)} />}
             {(expanded && count > 0 || attOpen === n.id) && <Attachments noteId={n.id} editable={attOpen === n.id} />}
-            {(n.tags ?? []).length > 0 && (
-              <div className="ntags">
-                {(n.tags ?? []).map((t) => (
-                  <button key={t} className="chip tag" onClick={() => setTagFilter(t)} aria-label={`Filtrar pela etiqueta ${t}`}>
-                    #{t}
-                  </button>
-                ))}
-              </div>
-            )}
-            <div className="nactions">
-              {!expanded && group && !q && !activeTag && (
-                <button
-                  type="button"
-                  className="ghost note-drag"
-                  disabled={reorderingNotes}
-                  aria-label={`Arrastar para reordenar a nota ${n.title || summary}`}
-                  title="Arraste para reordenar"
-                  onKeyDown={(event) => {
-                    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
-                    event.preventDefault();
-                    const groupNotes = notes
-                      .filter((note) => note.archived === archive && (group === "archive" || note.pinned === (group === "pinned")))
-                      .sort((a, b) => a.position - b.position);
-                    const index = groupNotes.findIndex((note) => note.id === n.id);
-                    const target = groupNotes[index + (event.key === "ArrowUp" ? -1 : 1)];
-                    if (target) void reorderNotes(n.id, target.id, group);
-                  }}
-                  onPointerDown={(event) => startNoteDrag(event, n.id, group)}
-                  onPointerMove={moveNoteDrag}
-                  onPointerUp={finishNoteDrag}
-                  onPointerCancel={cancelNoteDrag}
-                  onLostPointerCapture={cancelNoteDrag}
-                >
-                  <svg viewBox="0 0 16 16" aria-hidden="true" fill="currentColor">
-                    <circle cx="5" cy="3" r="1.25" /><circle cx="11" cy="3" r="1.25" />
-                    <circle cx="5" cy="8" r="1.25" /><circle cx="11" cy="8" r="1.25" />
-                    <circle cx="5" cy="13" r="1.25" /><circle cx="11" cy="13" r="1.25" />
-                  </svg>
+            <div className="note-footer">
+              {(n.tags ?? []).length > 0 && (
+                <div className="ntags">
+                  {(n.tags ?? []).map((t) => (
+                    <button key={t} className="chip tag" onClick={() => setTagFilter(t)} aria-label={`Filtrar pela etiqueta ${t}`}>
+                      #{t}
+                    </button>
+                  ))}
+                  {(n.tags ?? []).length > 2 && <span className="mobile-tag-count">+{n.tags.length - 2}</span>}
+                </div>
+              )}
+              <div className="nactions">
+                <button type="button" className="ghost mobile-note-more" aria-label={`Mais ações para a nota ${n.title || "sem título"}`} aria-haspopup="menu" onClick={(event) => openNoteMenu(event, n, count)}>
+                  <span aria-hidden="true">•••</span>
+                  <span>Mais</span>
                 </button>
-              )}
-              <button className="ghost" onClick={() => startEdit(n)}>Editar</button>
-              <button className="ghost" aria-expanded={attOpen === n.id} onClick={() => setAttOpen(attOpen === n.id ? null : n.id)}>
-                {attOpen === n.id ? "Fechar anexos" : count > 0 ? `Anexos (${count})` : "Anexar"}
-              </button>
-              {!archive && (
-                <button className="ghost" onClick={() => patch(n, { pinned: !n.pinned })}>{n.pinned ? "Desafixar" : "Fixar"}</button>
-              )}
-              <button className="ghost" onClick={() => archiveToggle(n)}>{n.archived ? "Desarquivar" : "Arquivar"}</button>
-              <button className="ghost danger" onClick={() => remove(n)}>Excluir</button>
+                {!expanded && group && !q && !activeTag && (
+                  <button
+                    type="button"
+                    className="ghost note-drag"
+                    disabled={reorderingNotes}
+                    aria-label={`Arrastar para reordenar a nota ${n.title || summary}`}
+                    title="Arraste para reordenar"
+                    onKeyDown={(event) => {
+                      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+                      event.preventDefault();
+                      const groupNotes = notes
+                        .filter((note) => note.archived === archive && (group === "archive" || note.pinned === (group === "pinned")))
+                        .sort((a, b) => a.position - b.position);
+                      const index = groupNotes.findIndex((note) => note.id === n.id);
+                      const target = groupNotes[index + (event.key === "ArrowUp" ? -1 : 1)];
+                      if (target) void reorderNotes(n.id, target.id, group);
+                    }}
+                    onPointerDown={(event) => startNoteDrag(event, n.id, group)}
+                    onPointerMove={moveNoteDrag}
+                    onPointerUp={finishNoteDrag}
+                    onPointerCancel={cancelNoteDrag}
+                    onLostPointerCapture={cancelNoteDrag}
+                  >
+                    <svg viewBox="0 0 16 16" aria-hidden="true" fill="currentColor">
+                      <circle cx="5" cy="3" r="1.25" /><circle cx="11" cy="3" r="1.25" />
+                      <circle cx="5" cy="8" r="1.25" /><circle cx="11" cy="8" r="1.25" />
+                      <circle cx="5" cy="13" r="1.25" /><circle cx="11" cy="13" r="1.25" />
+                    </svg>
+                  </button>
+                )}
+                <button className="ghost" onClick={() => startEdit(n)}>Editar</button>
+                <button className="ghost" aria-expanded={attOpen === n.id} onClick={() => setAttOpen(attOpen === n.id ? null : n.id)}>
+                  {attOpen === n.id ? "Fechar anexos" : count > 0 ? `Anexos (${count})` : "Anexar"}
+                </button>
+                {!archive && (
+                  <button className="ghost" onClick={() => patch(n, { pinned: !n.pinned })}>{n.pinned ? "Desafixar" : "Fixar"}</button>
+                )}
+                <button className="ghost" onClick={() => archiveToggle(n)}>{n.archived ? "Desarquivar" : "Arquivar"}</button>
+                <button className="ghost danger" onClick={() => remove(n)}>Excluir</button>
+              </div>
             </div>
             <Swatches value={n.color} onPick={(c) => patch(n, { color: c })} />
           </>
@@ -324,13 +349,20 @@ export default function Notes({ view, request, onHandled }: { view: string; requ
       <input className="search" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar notas" aria-label="Buscar notas" />
 
       {tagCounts.length > 0 && (
-        <div className="tagbar" role="group" aria-label="Filtrar por etiqueta">
+        <div className="note-tag-filters">
+          <button type="button" className="mobile-filter-toggle" aria-expanded={tagFiltersOpen} onClick={() => setTagFiltersOpen((open) => !open)}>
+            <span>Etiquetas</span>
+            {activeTag && <span className="active-filter">{activeTag}</span>}
+            <span className="filter-chevron" aria-hidden="true">{tagFiltersOpen ? "−" : "+"}</span>
+          </button>
+          <div className={`tagbar${tagFiltersOpen ? " is-open" : ""}`} role="group" aria-label="Filtrar por etiqueta">
           <button className="tagchip" aria-pressed={activeTag === null} onClick={() => setTagFilter(null)}>Todas</button>
           {tagCounts.map(([t, c]) => (
             <button key={t} className="tagchip" aria-pressed={activeTag === t} onClick={() => setTagFilter(activeTag === t ? null : t)}>
               #{t} <span>{c}</span>
             </button>
           ))}
+          </div>
         </div>
       )}
 
@@ -376,6 +408,7 @@ export default function Notes({ view, request, onHandled }: { view: string; requ
           {card(expandedNote, 0, true)}
         </Sheet>
       )}
+      {noteMenu && <Menu anchor={noteMenu.anchor} label={noteMenu.label} items={noteMenu.items} onClose={() => setNoteMenu(null)} />}
       {creating && !archive && <CaptureSheet view={view} mode="note" initialTag={activeTag} onClose={() => setCreating(false)} />}
     </section>
   );

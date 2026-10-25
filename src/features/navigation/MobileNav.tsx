@@ -46,7 +46,7 @@ export default function MobileNav({ view, setView, onSignOut, onSearch, onSettin
 
   return (
     <>
-      <nav className="tabbar" aria-label="Navegação principal">
+      <nav className={`tabbar${view === "week" ? " week-view" : ""}`} aria-label="Navegação principal">
         {tab("today", "Hoje", ICONS.today, todayCount)}
         {tab("upcoming", "Próximas", ICONS.upcoming)}
         <button className="fab" aria-label={view === "notes" ? "Nova nota" : "Nova tarefa"} onClick={newItem}>
@@ -55,7 +55,7 @@ export default function MobileNav({ view, setView, onSignOut, onSearch, onSettin
         {tab("notes", "Notas", ICONS.notes)}
         <button className="tab" aria-current={inLists || menu ? "page" : undefined} aria-haspopup="dialog" onClick={() => setMenu(true)}>
           {ICONS.lists}
-          <span>Listas</span>
+          <span>Mais</span>
         </button>
       </nav>
 
