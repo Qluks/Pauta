@@ -116,8 +116,8 @@ export default function CaptureSheet({ view, mode, onClose, onCreated, initialTa
       onClose={onClose}
       footer={
         <div className="create-actions">
-          {(isTask ? taskReady : noteReady) && <button type="button" className="ghost" onClick={discardDraft}>Descartar rascunho</button>}
-          <button type="button" className="ghost" onClick={onClose}>Cancelar</button>
+          {(isTask ? taskReady : noteReady) && <button type="button" className="ghost desktop-create-action" onClick={discardDraft}>Descartar rascunho</button>}
+          <button type="button" className="ghost desktop-create-action" onClick={onClose}>Cancelar</button>
           <button type="submit" form={formId} className="primary" disabled={isTask ? !taskReady : !noteReady}>
             {isTask ? "Criar tarefa" : "Criar nota"}
           </button>
@@ -125,7 +125,16 @@ export default function CaptureSheet({ view, mode, onClose, onCreated, initialTa
       }
     >
       <form id={formId} className={`create-form create-form-${mode}`} onSubmit={submit}>
-        {draftMessage && <p className="draft-status" role="status">{draftMessage}</p>}
+        {(draftMessage || (isTask ? taskReady : noteReady)) && (
+          <div className="draft-status-row">
+            {draftMessage && <p className="draft-status" role="status">{draftMessage}</p>}
+            {(isTask ? taskReady : noteReady) && (
+              <button type="button" className="draft-discard-mobile" onClick={discardDraft} aria-label="Descartar rascunho">
+                Limpar
+              </button>
+            )}
+          </div>
+        )}
         {isTask ? (
           <>
             <label className="create-title-field">

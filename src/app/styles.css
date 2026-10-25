@@ -673,8 +673,17 @@ body::before {
 .create-form > label > select {
   width: 100%; min-width: 0; min-height: var(--control-height); padding: 9px 11px; border: 1px solid var(--rule); border-radius: var(--control-radius); background: var(--surface); color: var(--ink);
 }
+.create-form > label > input[type="date"],
+.create-form > label > input[type="time"] {
+  display: block; width: 100%; min-width: 0; max-width: 100%; -webkit-appearance: none; appearance: none; text-align: left;
+}
+.create-form > label > input[type="date"]::-webkit-date-and-time-value,
+.create-form > label > input[type="time"]::-webkit-date-and-time-value { min-width: 0; text-align: left; }
 .create-form > label > textarea { min-height: 150px; resize: vertical; font: 400 1.04rem/1.5 var(--font-text); }
 .create-form .create-field { display: grid; gap: 5px; min-width: 0; }
+.draft-status-row { display: flex; grid-column: 1 / -1; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
+.draft-status-row .draft-status { min-width: 0; overflow-wrap: anywhere; }
+.draft-discard-mobile { display: none; flex: none; padding: 4px 8px; color: var(--muted); font-size: 0.8rem; text-decoration: underline; text-underline-offset: 3px; }
 .create-form .taginput { min-height: var(--control-height); padding: 6px 8px; border: 1px solid var(--rule); border-radius: var(--control-radius); background: var(--surface); }
 .create-form .taginput input { min-width: 0; }
 .create-form .chip { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
@@ -732,7 +741,7 @@ body::before {
   .create-form { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .create-form > label, .create-form > label:first-child, .create-form-note > label:nth-child(2), .create-form .create-field, .create-form .create-actions { grid-column: 1; }
   .create-form > .create-title-field { grid-column: 1; }
-  .create-form > .draft-status { grid-column: 1; }
+  .draft-status-row { grid-column: 1; }
   .head-actions { width: 100%; margin-left: 0; }
 
   .tabbar {
@@ -855,8 +864,11 @@ body::before {
   .sheet-body { padding-right: 16px; padding-left: 16px; }
   .sheet-footer { padding: 10px 16px calc(8px + env(safe-area-inset-bottom)); box-shadow: 0 -10px 18px color-mix(in srgb, var(--paper) 85%, transparent); }
   .create-actions { justify-content: stretch; }
+  .create-actions .desktop-create-action { display: none; }
   .create-actions button { flex: 1; min-width: 0; min-height: 46px; }
   .create-actions .primary { min-width: 0; }
+  .draft-status-row { justify-content: space-between; }
+  .draft-discard-mobile { display: inline-flex; }
   .markdown-toolbar { position: sticky; top: 0; z-index: 1; background: var(--surface); }
   .markdown-toolbar button { min-width: 38px; min-height: 38px; }
   .markdown-editor > textarea { min-height: 180px; font-size: 16px; touch-action: pan-y; }
