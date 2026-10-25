@@ -22,7 +22,7 @@ function hostOf(url: string | null) {
 }
 
 export default function Attachments({ taskId, noteId, editable = true }: { taskId?: string; noteId?: string; editable?: boolean }) {
-  const { attachments, setAttachments, hide, unhide } = useData();
+  const { attachments, setAttachments, hide, unhide, saveMutation, online } = useData();
   const toast = useToast();
   const [adding, setAdding] = useState(false);
   const [url, setUrl] = useState("");
@@ -48,10 +48,10 @@ export default function Attachments({ taskId, noteId, editable = true }: { taskI
     setLabel("");
     setAdding(false);
     setError(null);
-    const { error } = await supabase.from("attachments").insert(att);
-    if (error) {
+    const result = await saveMutation("attachments", att.id, "upsert", att);
+    if (result.error) {
       setAttachments((p) => p.filter((x) => x.id !== att.id));
-      setError(error.message);
+      setError(result.error);
     }
   }
 
@@ -59,6 +59,10 @@ export default function Attachments({ taskId, noteId, editable = true }: { taskI
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
+    if (!online) {
+      setError("O envio de arquivos precisa de conexão. Tente novamente quando estiver online.");
+      return;
+    }
     if (file.size > MAX_BYTES) {
       setError(`O arquivo tem ${fmtSize(file.size)}. O limite é 10 MB.`);
       return;
@@ -113,9 +117,16 @@ export default function Attachments({ taskId, noteId, editable = true }: { taskI
     toast("Anexo removido", {
       onUndo: () => unhide(a.id),
       onCommit: async () => {
-        if (a.kind === "file" && a.path) await supabase.storage.from(BUCKET).remove([a.path]);
-        const { error } = await supabase.from("attachments").delete().eq("id", a.id);
-        if (error) setError(error.message);
+        if (a.kind === "file" && a.path && online) {
+          const { error: storageError } = await supabase.storage.from(BUCKET).remove([a.path]);
+          if (storageError) {
+            setError(storageError.message);
+            unhide(a.id);
+            return;
+          }
+        }
+        const result = await saveMutation("attachments", a.id, "delete", {}, a);
+        if (result.error) setError(result.error);
         else setAttachments((p) => p.filter((x) => x.id !== a.id));
         unhide(a.id);
       },

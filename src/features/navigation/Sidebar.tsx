@@ -1,5 +1,4 @@
-import { PointerEvent, useRef, useState } from "react";
-import { supabase } from "../../lib/supabase";
+import { lazy, PointerEvent, Suspense, useRef, useState } from "react";
 import type { List } from "../../lib/types";
 import Mark from "../../components/Mark";
 import { cv, listColor } from "../../lib/colors";
@@ -7,6 +6,7 @@ import { LIST_COLS, useData } from "../../lib/data";
 import { isDormant, today } from "../../lib/util";
 import { removeTaskFilter, useSavedTaskFilters } from "../tasks/savedFilters";
 import ListCreateSheet from "./ListCreateSheet";
+const BackupImportSheet = lazy(() => import("./BackupImportSheet"));
 
 type Props = { view: string; setView: (v: string) => void; onSignOut: () => void; onSearch?: () => void; onSettings?: () => void; variant?: "side" | "sheet" };
 
@@ -21,10 +21,11 @@ const VIEWS: { id: string; label: string; gap?: boolean }[] = [
 ];
 
 export default function Sidebar({ view, setView, onSignOut, onSearch, onSettings, variant = "side" }: Props) {
-  const { tasks, notes, lists, attachments, setLists, reload } = useData();
+  const { tasks, notes, lists, attachments, setLists, reload, saveMutation } = useData();
   const savedFilters = useSavedTaskFilters();
   const [error, setError] = useState<string | null>(null);
   const [creatingList, setCreatingList] = useState(false);
+  const [importingBackup, setImportingBackup] = useState(false);
   const [reordering, setReordering] = useState(false);
   const [draggingList, setDraggingList] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
@@ -46,8 +47,8 @@ export default function Sidebar({ view, setView, onSignOut, onSearch, onSettings
       : `Excluir a lista "${l.name}"?`;
     if (!window.confirm(message)) return;
     setError(null);
-    const { error } = await supabase.from("lists").delete().eq("id", l.id);
-    if (error) return setError(error.message);
+    const result = await saveMutation("lists", l.id, "delete", {}, l);
+    if (result.error) return setError(result.error);
     setLists((p) => p.filter((x) => x.id !== l.id));
     if (view === `list:${l.id}`) setView("all");
   }
@@ -65,12 +66,10 @@ export default function Sidebar({ view, setView, onSignOut, onSearch, onSettings
     setReordering(true);
     setError(null);
     try {
-      const results = await Promise.all(
-        positioned.map((item) => supabase.from("lists").update({ position: item.position }).eq("id", item.id))
-      );
+      const results = await Promise.all(positioned.map((item) => saveMutation("lists", item.id, "update", { position: item.position }, lists.find((old) => old.id === item.id) ?? item)));
       const failed = results.find((result) => result.error);
       if (failed?.error) {
-        setError(`Não foi possível reordenar as listas: ${failed.error.message}`);
+        setError(`Não foi possível reordenar as listas: ${failed.error}`);
         await reload();
       }
     } catch (error) {
@@ -133,6 +132,7 @@ export default function Sidebar({ view, setView, onSignOut, onSearch, onSettings
         <h1 className="brand"><Mark /> Pauta</h1>
         <div className="side-actions">
           <button className="ghost" onClick={onSettings}>Ajustes</button>
+          <button className="ghost" onClick={() => setImportingBackup(true)} title="Restaurar dados de um backup JSON">Importar</button>
           <button className="ghost" onClick={exportData} title="Baixar uma cópia dos seus dados (JSON)">Exportar</button>
           <button className="ghost" onClick={onSignOut}>Sair</button>
         </div>
@@ -244,6 +244,7 @@ export default function Sidebar({ view, setView, onSignOut, onSearch, onSettings
       </div>
       {error && <p className="error" role="alert">{error}</p>}
       {creatingList && <ListCreateSheet onClose={() => setCreatingList(false)} />}
+      {importingBackup && <Suspense fallback={null}><BackupImportSheet onClose={() => setImportingBackup(false)} /></Suspense>}
     </nav>
   );
 }

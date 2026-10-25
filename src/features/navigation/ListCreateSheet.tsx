@@ -2,12 +2,11 @@ import { FormEvent, useMemo, useState } from "react";
 import Sheet from "../../components/Sheet";
 import Swatches from "../../components/Swatches";
 import { cv, lineVar } from "../../lib/colors";
-import { LIST_COLS, useData } from "../../lib/data";
-import { supabase } from "../../lib/supabase";
+import { useData } from "../../lib/data";
 import type { List } from "../../lib/types";
 
 export default function ListCreateSheet({ onClose }: { onClose: () => void }) {
-  const { lists, setLists } = useData();
+  const { lists, setLists, saveMutation } = useData();
   const [name, setName] = useState("");
   const used = useMemo(() => new Set(lists.map((list, index) => list.color ?? index)), [lists]);
   const defaultColor = [0, 1, 2, 3, 4, 5].find((color) => !used.has(color)) ?? lists.length % 6;
@@ -23,16 +22,14 @@ export default function ListCreateSheet({ onClose }: { onClose: () => void }) {
     setError(null);
     const position = lists.length ? Math.max(...lists.map((list) => list.position)) + 1 : 0;
     try {
-      const { data, error: insertError } = await supabase.from("lists")
-        .insert({ name: cleanName, color: Number(color), position })
-        .select(LIST_COLS)
-        .single();
-      if (insertError) {
-        setError(insertError.message);
+      const row: List = { id: crypto.randomUUID(), name: cleanName, color: Number(color), position };
+      setLists((current) => [...current, row]);
+      const result = await saveMutation("lists", row.id, "upsert", row);
+      if (result.error) {
+        setLists((current) => current.filter((list) => list.id !== row.id));
+        setError(result.error);
         return;
       }
-      const row = data as unknown as List;
-      setLists((current) => current.some((list) => list.id === row.id) ? current : [...current, row]);
       onClose();
     } catch (insertError) {
       setError(`Não foi possível criar a lista: ${insertError instanceof Error ? insertError.message : String(insertError)}`);

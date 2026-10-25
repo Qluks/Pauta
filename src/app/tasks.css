@@ -1,0 +1,13 @@
+.row .task-actions .mobile-task-more { display: none; }
+.bulk-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: -6px 0 14px; padding: 10px 12px; border: 1px solid var(--rule); border-radius: 10px; background: var(--paper); }
+.bulk-actions > span { margin-right: auto; color: var(--muted); font: 600 0.82rem var(--font-ui); }
+.task-select { flex: none; }
+.calendar-event[draggable="true"] { cursor: grab; }
+.calendar-event[draggable="true"]:active { cursor: grabbing; }
+.calendar-cell.is-drop-target, .calendar-mobile-agenda.is-drop-target { outline: 2px dashed var(--ink); outline-offset: -5px; background: color-mix(in srgb, var(--ink) 7%, var(--paper)); }
+
+@media (max-width: 700px) {
+  .row .task-actions .mobile-task-more { display: grid; }
+  .bulk-actions { gap: 6px; }
+  .bulk-actions > span { flex-basis: 100%; }
+}

@@ -14,9 +14,21 @@ Use somente a chave pública/anon no frontend. Nunca coloque uma `service_role` 
 
 Filtros personalizados são salvos no armazenamento local do navegador e não são sincronizados entre aparelhos. A visualização **Semana** apresenta um calendário de segunda a domingo; os botões de navegação permitem consultar semanas anteriores e seguintes.
 
+O editor de notas oferece formatação de texto, títulos, listas, citações, código e links em Markdown, com prévia antes de salvar.
+
+Em **Ajustes > Aparência**, escolha tema automático, claro ou escuro, combine com uma das paletas Clássico, Oceano, Floresta, Lavanda ou Pôr do sol, e selecione o estilo de papel. A preferência é salva neste navegador.
+
+## Uso offline e backups
+
+Depois que os dados forem carregados online, o app mantém uma cópia local por conta. Tarefas, notas, listas e links podem ser criados, editados, concluídos e excluídos offline; as alterações ficam em uma fila local e são enviadas quando a conexão voltar. O indicador no topo mostra alterações pendentes e erros de sincronização.
+
+Se um item também tiver sido alterado na nuvem desde a cópia usada neste aparelho, o app preserva as duas versões e pede para escolher qual manter. Rascunhos de criação e edição de notas também são salvos no aparelho. Anexar arquivos e abrir arquivos remotos ainda exige conexão; itens de arquivo não são incluídos ao importar um backup.
+
+Use **Exportar** para baixar um backup JSON. **Importar** valida o arquivo e mostra uma prévia antes da confirmação; registros com o mesmo ID são atualizados, sem apagar os demais dados. A importação pode ser parcial se houver um erro de sincronização; a mensagem informa quantos itens foram processados.
+
 ## Organização do código
 
-- `src/app`: inicialização do React, composição principal da aplicação e estilos globais.
+- `src/app`: inicialização do React, composição principal e estilos globais; `offline.css` e `tasks.css` agrupam estilos específicos de sincronização e tarefas.
 - `src/features`: funcionalidades agrupadas por domínio — autenticação, tarefas, notas, navegação e ajustes.
 - `src/components`: componentes reutilizáveis entre funcionalidades.
 - `src/lib`: acesso ao Supabase, dados compartilhados, tipos e utilitários.

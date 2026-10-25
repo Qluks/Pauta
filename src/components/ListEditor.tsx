@@ -1,21 +1,20 @@
 import { useState } from "react";
-import { supabase } from "../lib/supabase";
 import { useData } from "../lib/data";
 import type { List } from "../lib/types";
 import Swatches from "./Swatches";
 
 export default function ListEditor({ list, index, onClose }: { list: List; index: number; onClose: () => void }) {
-  const { setLists } = useData();
+  const { setLists, saveMutation } = useData();
   const [name, setName] = useState(list.name);
   const [error, setError] = useState<string | null>(null);
 
   async function save(changes: Partial<List>) {
     const prev = list;
     setLists((p) => p.map((l) => (l.id === list.id ? { ...l, ...changes } : l)));
-    const { error } = await supabase.from("lists").update(changes).eq("id", list.id);
-    if (error) {
+    const result = await saveMutation("lists", list.id, "update", changes, list);
+    if (result.error) {
       setLists((p) => p.map((l) => (l.id === list.id ? prev : l)));
-      setError(error.message);
+      setError(result.error);
     }
   }
   function saveName() {

@@ -1,7 +1,6 @@
-import { supabase } from "../../lib/supabase";
-import { TASK_COLS, useData } from "../../lib/data";
+import { useData } from "../../lib/data";
 import { parseQuick } from "../../lib/parse";
-import { buildLinkAttachments, saveAttachments } from "../../lib/links";
+import { buildLinkAttachments } from "../../lib/links";
 import { reminderPassed, today } from "../../lib/util";
 import type { Task } from "../../lib/types";
 
@@ -18,7 +17,7 @@ export type TaskDraft = {
 
 // Cria uma tarefa a partir do texto digitado (prazo, horário, lista, etiquetas, prioridade, repetição e links). A tela atualiza na hora.
 export function useAddTask() {
-  const { setTasks, lists, setAttachments } = useData();
+  const { setTasks, lists, setAttachments, saveMutation } = useData();
   return function addTask(input: string | TaskDraft, o: { view?: string; listId?: string | null; tag?: string | null; defaultDueAt?: string | null } = {}) {
     const p = typeof input === "string" ? parseQuick(input, lists) : null;
     const title = typeof input === "string" ? p?.title ?? "" : input.title.trim();
@@ -58,18 +57,20 @@ export function useAddTask() {
     const dropAtts = () => setAttachments((prev) => prev.filter((a) => !atts.some((x) => x.id === a.id)));
     // done: resolve com null (salvou) ou com a mensagem de erro
     const done = (async (): Promise<string | null> => {
-      const { data, error } = await supabase.from("tasks").insert({ id, ...fields }).select(TASK_COLS).single();
-      if (error) {
+      const saved = await saveMutation("tasks", id, "upsert", { id, ...fields });
+      if (saved.error) {
         setTasks((prev) => prev.filter((x) => x.id !== id));
         dropAtts();
-        return error.message;
+        return saved.error;
       }
-      const row = data as unknown as Task;
-      setTasks((prev) => (prev.some((x) => x.id === row.id) ? prev.map((x) => (x.id === row.id ? row : x)) : [row, ...prev]));
-      const err = await saveAttachments(atts);
-      if (err) {
-        dropAtts();
-        return `a tarefa foi salva, mas os links não: ${err}`;
+      for (let index = 0; index < atts.length; index += 1) {
+        const attachment = atts[index];
+        const attachmentResult = await saveMutation("attachments", attachment.id, "upsert", attachment);
+        if (attachmentResult.error) {
+          const unsavedIds = new Set(atts.slice(index).map((item) => item.id));
+          setAttachments((prev) => prev.filter((item) => !unsavedIds.has(item.id)));
+          return `a tarefa foi salva, mas os links não: ${attachmentResult.error}`;
+        }
       }
       return null;
     })();

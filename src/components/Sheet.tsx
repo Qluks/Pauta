@@ -57,18 +57,27 @@ export default function Sheet({ title, onClose, variant = "dialog", color, heade
     // Teclado do celular: sobe a folha para ela não ficar escondida atrás dele
     const vv = window.visualViewport;
     const update = () => {
-      if (vv) document.documentElement.style.setProperty("--kb", `${Math.max(0, window.innerHeight - vv.height - vv.offsetTop)}px`);
+      if (vv) {
+        const keyboard = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+        document.documentElement.style.setProperty("--kb", `${keyboard}px`);
+        document.documentElement.style.setProperty("--vvh", `${vv.height}px`);
+      } else {
+        document.documentElement.style.setProperty("--vvh", `${window.innerHeight}px`);
+      }
     };
     update();
     vv?.addEventListener("resize", update);
     vv?.addEventListener("scroll", update);
+    window.addEventListener("resize", update);
 
     return () => {
       document.body.style.overflow = prevOverflow;
       window.removeEventListener("keydown", onKey);
       vv?.removeEventListener("resize", update);
       vv?.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
       document.documentElement.style.removeProperty("--kb");
+      document.documentElement.style.removeProperty("--vvh");
       // Devolve o foco a quem abriu a folha, a menos que outra janela (como a busca) já tenha pegado o foco
       const a = document.activeElement;
       if (opener.current instanceof HTMLElement && (!a || a === document.body)) opener.current.focus({ preventScroll: true });
@@ -109,6 +118,11 @@ export default function Sheet({ title, onClose, variant = "dialog", color, heade
         tabIndex={-1}
         style={color ? cv(color) : undefined}
         onClick={(e) => e.stopPropagation()}
+        onFocusCapture={(event) => {
+          const field = event.target;
+          if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement)) return;
+          window.requestAnimationFrame(() => field.scrollIntoView({ block: "nearest", behavior: "smooth" }));
+        }}
       >
         <div className="sheet-handle" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} aria-hidden="true">
           <span />

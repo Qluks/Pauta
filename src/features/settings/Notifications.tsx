@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useAppearance, type Appearance } from "../../lib/appearance";
+import { PALETTES, useAppearance, type Appearance } from "../../lib/appearance";
 import { currentSubscription, disablePush, enablePush, hasKey, isIOS, isStandalone, matchesKey, pushSupported, serverTest, testNotification } from "../../lib/push";
 import { useDialogFocus } from "../../lib/useDialogFocus";
 
@@ -30,6 +30,25 @@ function AppearanceSection() {
           {seg("theme", "auto", "Automático")}
           {seg("theme", "light", "Claro")}
           {seg("theme", "dark", "Escuro")}
+        </div>
+      </div>
+      <div className="seg-row">
+        <span className="lbl">Paleta de cores</span>
+        <div className="palette-options" role="group" aria-label="Paleta de cores">
+          {PALETTES.map((palette) => (
+            <button
+              key={palette.id}
+              type="button"
+              className="palette-option"
+              aria-pressed={a.palette === palette.id}
+              onClick={() => set({ palette: palette.id })}
+            >
+              <span className="palette-swatch" style={{ backgroundColor: palette.surface }} aria-hidden="true">
+                <i style={{ backgroundColor: palette.accent }} />
+              </span>
+              {palette.label}
+            </button>
+          ))}
         </div>
       </div>
       <div className="seg-row">

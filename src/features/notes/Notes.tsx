@@ -1,8 +1,7 @@
-import { CSSProperties, KeyboardEvent, MouseEvent, PointerEvent, useEffect, useMemo, useRef, useState } from "react";
-import { supabase } from "../../lib/supabase";
+import { CSSProperties, MouseEvent, PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { ChecklistItem, Note } from "../../lib/types";
 import { cv, lineVar } from "../../lib/colors";
-import { NOTE_COLS, useData } from "../../lib/data";
+import { useData } from "../../lib/data";
 import { useToast } from "../../components/Toast";
 import Swatches from "../../components/Swatches";
 import TagInput from "../../components/Tags";
@@ -14,13 +13,23 @@ import EmptyState from "../../components/EmptyState";
 import Sheet from "../../components/Sheet";
 import CaptureSheet from "../../components/CaptureSheet";
 import Menu, { type MenuItem } from "../../components/Menu";
+import MarkdownEditor from "../../components/MarkdownEditor";
+import MarkdownContent from "../../components/MarkdownContent";
 
 const colorOf = (c: string | null) => (c === null ? "var(--rule)" : lineVar(Number(c)));
 const clean = (items: ChecklistItem[]) => items.filter((i) => i.text.trim());
+function isNoteEditDraft(value: unknown): value is { title: string; body: string; tags: string[]; checklist: ChecklistItem[]; color: string | null } {
+  if (!value || typeof value !== "object") return false;
+  const draft = value as Partial<{ title: string; body: string; tags: string[]; checklist: ChecklistItem[]; color: string | null }>;
+  return typeof draft.title === "string" && typeof draft.body === "string" &&
+    Array.isArray(draft.tags) && draft.tags.every((tag) => typeof tag === "string") &&
+    Array.isArray(draft.checklist) && draft.checklist.every((item) => !!item && typeof item.id === "string" && typeof item.text === "string" && typeof item.done === "boolean") &&
+    (draft.color === null || typeof draft.color === "string");
+}
 
 export default function Notes({ view, request, onHandled }: { view: string; request?: { id: string; n: number } | null; onHandled?: () => void }) {
   const archive = view === "archive";
-  const { notes, setNotes, attachments, setAttachments, purgeFiles, loading, loadError, reload, hide, unhide } = useData();
+  const { notes, setNotes, attachments, setAttachments, purgeFiles, loading, loadError, reload, hide, unhide, saveMutation, online, ownerId } = useData();
   const toast = useToast();
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -36,6 +45,16 @@ export default function Notes({ view, request, onHandled }: { view: string; requ
   const [reorderingNotes, setReorderingNotes] = useState(false);
   const [noteMenu, setNoteMenu] = useState<{ anchor: DOMRect; label: string; items: MenuItem[] } | null>(null);
   const noteDragRef = useRef<{ id: string; group: "pinned" | "other" | "archive"; pointerId: number } | null>(null);
+  const draftKey = ownerId && editingId ? `pauta-draft:${ownerId}:note-edit:${editingId}` : null;
+
+  useEffect(() => {
+    if (!draftKey) return;
+    try {
+      localStorage.setItem(draftKey, JSON.stringify(edit));
+    } catch (storageError) {
+      setError(`Não foi possível salvar o rascunho da nota: ${storageError instanceof Error ? storageError.message : String(storageError)}`);
+    }
+  }, [draftKey, edit]);
 
   const attCount = new Map<string, number>();
   for (const a of attachments) if (a.note_id) attCount.set(a.note_id, (attCount.get(a.note_id) ?? 0) + 1);
@@ -90,10 +109,10 @@ export default function Notes({ view, request, onHandled }: { view: string; requ
   async function patch(note: Note, changes: Partial<Note>, bump = true) {
     const full = bump ? { ...changes, updated_at: new Date().toISOString() } : changes;
     setNotes((p) => p.map((x) => (x.id === note.id ? { ...x, ...full } : x)));
-    const { error } = await supabase.from("notes").update(full).eq("id", note.id);
-    if (error) {
+    const result = await saveMutation("notes", note.id, "update", full, note);
+    if (result.error) {
       setNotes((p) => p.map((x) => (x.id === note.id ? note : x)));
-      setError(error.message);
+      setError(result.error);
     }
   }
 
@@ -102,9 +121,27 @@ export default function Notes({ view, request, onHandled }: { view: string; requ
     toast("Nota excluída", {
       onUndo: () => unhide(note.id),
       onCommit: async () => {
-        await purgeFiles({ noteId: note.id });
-        const { error } = await supabase.from("notes").delete().eq("id", note.id);
-        if (error) setError(error.message);
+        if (online) {
+          const cleanupError = await purgeFiles({ noteId: note.id });
+          if (cleanupError) {
+            setError(cleanupError);
+            unhide(note.id);
+            return;
+          }
+        }
+        else {
+          const removals = await Promise.all(attachments.filter((attachment) => attachment.note_id === note.id).map((attachment) =>
+            saveMutation("attachments", attachment.id, "delete", {}, attachment)
+          ));
+          const failedRemoval = removals.find((result) => result.error);
+          if (failedRemoval?.error) {
+            setError(`Não foi possível enfileirar a remoção dos anexos: ${failedRemoval.error}`);
+            unhide(note.id);
+            return;
+          }
+        }
+        const result = await saveMutation("notes", note.id, "delete", {}, note);
+        if (result.error) setError(result.error);
         else {
           setNotes((p) => p.filter((x) => x.id !== note.id));
           setAttachments((p) => p.filter((a) => a.note_id !== note.id));
@@ -122,10 +159,25 @@ export default function Notes({ view, request, onHandled }: { view: string; requ
 
   function startEdit(n: Note) {
     setEditingId(n.id);
-    setEdit({ title: n.title ?? "", body: n.body ?? "", tags: n.tags ?? [], checklist: n.checklist ?? [], color: n.color });
+    const initial = { title: n.title ?? "", body: n.body ?? "", tags: n.tags ?? [], checklist: n.checklist ?? [], color: n.color };
+    try {
+      const raw = ownerId ? localStorage.getItem(`pauta-draft:${ownerId}:note-edit:${n.id}`) : null;
+      const saved: unknown = raw ? JSON.parse(raw) : null;
+      setEdit(isNoteEditDraft(saved) ? saved : initial);
+    } catch (storageError) {
+      setError(`Não foi possível recuperar o rascunho da nota: ${storageError instanceof Error ? storageError.message : String(storageError)}`);
+      setEdit(initial);
+    }
   }
   function saveEdit(n: Note) {
     setEditingId(null);
+    if (ownerId) {
+      try {
+        localStorage.removeItem(`pauta-draft:${ownerId}:note-edit:${n.id}`);
+      } catch (storageError) {
+        setError(`A nota foi salva, mas o rascunho local não foi removido: ${storageError instanceof Error ? storageError.message : String(storageError)}`);
+      }
+    }
     const title = edit.title.trim();
     const body = edit.body.trim();
     const checklist = clean(edit.checklist);
@@ -150,10 +202,6 @@ export default function Notes({ view, request, onHandled }: { view: string; requ
   function toggleItem(n: Note, id: string) {
     patch(n, { checklist: (n.checklist ?? []).map((i) => (i.id === id ? { ...i, done: !i.done } : i)) }, false);
   }
-  function ctrlEnter(e: KeyboardEvent, fn: () => void) {
-    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") fn();
-  }
-
   async function reorderNotes(sourceId: string, targetId: string, group: "pinned" | "other" | "archive") {
     if (reorderingNotes || sourceId === targetId) return;
     const groupNotes = notes
@@ -170,12 +218,10 @@ export default function Notes({ view, request, onHandled }: { view: string; requ
     setReorderingNotes(true);
     setError(null);
     try {
-      const results = await Promise.all(
-        positioned.map((note) => supabase.from("notes").update({ position: note.position }).eq("id", note.id))
-      );
+      const results = await Promise.all(positioned.map((note) => saveMutation("notes", note.id, "update", { position: note.position }, groupNotes.find((old) => old.id === note.id) ?? note)));
       const failed = results.find((result) => result.error);
       if (failed?.error) {
-        setError(`Não foi possível reordenar as notas: ${failed.error.message}`);
+        setError(`Não foi possível reordenar as notas: ${failed.error}`);
         await reload();
       }
     } catch (reorderError) {
@@ -239,7 +285,7 @@ export default function Notes({ view, request, onHandled }: { view: string; requ
         {editingId === n.id ? (
           <>
             <input className="ntitle" autoFocus value={edit.title} onChange={(e) => setEdit({ ...edit, title: e.target.value })} placeholder="Título" aria-label="Título" />
-            <textarea className="nbody" rows={5} value={edit.body} onChange={(e) => setEdit({ ...edit, body: e.target.value })} onKeyDown={(e) => ctrlEnter(e, () => saveEdit(n))} placeholder="Nota" aria-label="Texto da nota" />
+            <MarkdownEditor className="note-body-editor" rows={7} value={edit.body} onChange={(body) => setEdit((current) => ({ ...current, body }))} placeholder="Escreva sua nota…" />
             <ChecklistEditor items={edit.checklist} onChange={(checklist) => setEdit({ ...edit, checklist })} />
             <TagInput tags={edit.tags} onChange={(tags) => setEdit({ ...edit, tags })} suggestions={allTagNames} listId="tags-edit" />
             <div className="note-edit-color">
@@ -254,16 +300,23 @@ export default function Notes({ view, request, onHandled }: { view: string; requ
         ) : (
           <>
             {expanded ? (
-              n.body && <p>{n.body}</p>
+              n.body && <MarkdownContent value={n.body} />
             ) : (
-              <button
-                type="button"
+              <div
+                role="button"
+                tabIndex={0}
                 className="note-summary"
                 onClick={() => setExpandedNoteId(n.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setExpandedNoteId(n.id);
+                  }
+                }}
                 aria-label={`Abrir nota: ${summary.replace(/\s+/g, " ").slice(0, 100)}`}
               >
                 {n.title && <h3>{n.title}</h3>}
-                {n.body && <p>{n.body}</p>}
+                {n.body && <MarkdownContent value={n.body} />}
                 {!n.title && !n.body && <span>{summary}</span>}
                 {!expanded && (checklist.length > 0 || count > 0) && (
                   <span className="note-preview-meta">
@@ -271,7 +324,7 @@ export default function Notes({ view, request, onHandled }: { view: string; requ
                     {count > 0 && <span>{count} {count === 1 ? "anexo" : "anexos"}</span>}
                   </span>
                 )}
-              </button>
+              </div>
             )}
             {expanded && <ChecklistView items={checklist} onToggle={(id) => toggleItem(n, id)} />}
             {(expanded && count > 0 || attOpen === n.id) && <Attachments noteId={n.id} editable={attOpen === n.id} />}
@@ -343,7 +396,7 @@ export default function Notes({ view, request, onHandled }: { view: string; requ
     <section>
       <div className="headrow">
         <h2 className="heading">{archive ? "Arquivo" : "Notas"}</h2>
-        {!archive && <button type="button" className="primary create-button" onClick={() => setCreating(true)}>Nova nota</button>}
+        {!archive && <div className="head-actions"><button type="button" className="primary create-button" onClick={() => setCreating(true)}>Nova nota</button></div>}
       </div>
 
       <input className="search" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar notas" aria-label="Buscar notas" />

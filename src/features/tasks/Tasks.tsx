@@ -1,8 +1,7 @@
 import { CSSProperties, FormEvent, KeyboardEvent, MouseEvent, useEffect, useRef, useState } from "react";
-import { supabase } from "../../lib/supabase";
 import type { Task } from "../../lib/types";
 import { cv, listColor } from "../../lib/colors";
-import { TASK_COLS, useData } from "../../lib/data";
+import { useData } from "../../lib/data";
 import { useToast } from "../../components/Toast";
 import { dayHint, describeDate, doneToday, fmt, isDormant, isoDate, nextMondayIso, periodOf, PERIODS, PRIORITY, reminderPassed, today, tomorrow } from "../../lib/util";
 import { nextDue, recurrenceLabel, snoozeUntil } from "../../lib/parse";
@@ -31,7 +30,7 @@ const moveDate = (date: string, days: number) => {
 };
 
 export default function Tasks({ view, openRequest, onHandled }: { view: string; openRequest?: { id: string; n: number } | null; onHandled?: () => void }) {
-  const { tasks, setTasks, lists, attachments, setAttachments, purgeFiles, loading, loadError, reload, hide, unhide } = useData();
+  const { tasks, setTasks, lists, attachments, setAttachments, purgeFiles, loading, loadError, reload, hide, unhide, saveMutation, online } = useData();
   const toast = useToast();
   const [query, setQuery] = useState("");
   const [tagFilter, setTagFilter] = useState<string | null>(null);
@@ -51,6 +50,9 @@ export default function Tasks({ view, openRequest, onHandled }: { view: string; 
   const [dueFilter, setDueFilter] = useState<SavedTaskFilter["due"]>("any");
   const [filterName, setFilterName] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [calendarDropDate, setCalendarDropDate] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [createDueAt, setCreateDueAt] = useState<string | null>(null);
   const savedFilters = useSavedTaskFilters();
@@ -59,6 +61,13 @@ export default function Tasks({ view, openRequest, onHandled }: { view: string; 
   const t0 = today();
   const currentWeekStart = weekStartOf(t0);
   const currentWeekEnd = moveDate(currentWeekStart, 6);
+  useEffect(() => {
+    setSelectedIds(new Set());
+    setSelectionMode(false);
+  }, [view]);
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [query, tagFilter, listFilter, priorityFilter, dueFilter]);
   const attCount = new Map<string, number>();
   for (const a of attachments) if (a.task_id) attCount.set(a.task_id, (attCount.get(a.task_id) ?? 0) + 1);
   const listIdx = view.startsWith("list:") ? lists.findIndex((l) => `list:${l.id}` === view) : -1;
@@ -177,10 +186,10 @@ export default function Tasks({ view, openRequest, onHandled }: { view: string; 
       changes = { ...changes, notified_at: reminderPassed(due, time) ? new Date().toISOString() : null };
     }
     setTasks((prev) => prev.map((x) => (x.id === task.id ? { ...x, ...changes } : x)));
-    const { error } = await supabase.from("tasks").update(changes).eq("id", task.id);
-    if (error) {
+    const result = await saveMutation("tasks", task.id, "update", changes, task);
+    if (result.error) {
       setTasks((prev) => prev.map((x) => (x.id === task.id ? task : x)));
-      setError(error.message);
+      setError(result.error);
     }
   }
 
@@ -199,32 +208,15 @@ export default function Tasks({ view, openRequest, onHandled }: { view: string; 
     };
     setTasks((prev) => [copy, ...prev]);
     try {
-      const { data, error } = await supabase
-        .from("tasks")
-        .insert({
+      const result = await saveMutation("tasks", id, "upsert", {
+          ...copy,
           id,
-          title: copy.title,
-          done: false,
-          done_at: null,
-          created_at: createdAt,
-          due_at: copy.due_at,
-          due_time: copy.due_time,
-          priority: copy.priority,
-          list_id: copy.list_id,
-          tags: copy.tags,
-          recurrence: copy.recurrence,
-          snoozed_until: null,
-          notified_at: null,
-          checklist: copy.checklist,
-        })
-        .select(TASK_COLS)
-        .single();
-      if (error) {
+        });
+      if (result.error) {
         setTasks((prev) => prev.filter((item) => item.id !== id));
-        setError(error.message);
+        setError(result.error);
         return;
       }
-      setTasks((prev) => prev.map((item) => (item.id === id ? (data as Task) : item)));
       toast((attCount.get(task.id) ?? 0) > 0 ? "Tarefa duplicada. Os anexos não foram copiados." : "Tarefa duplicada");
     } catch (error) {
       setTasks((prev) => prev.filter((item) => item.id !== id));
@@ -326,9 +318,27 @@ export default function Tasks({ view, openRequest, onHandled }: { view: string; 
     toast("Tarefa excluída", {
       onUndo: () => unhide(task.id),
       onCommit: async () => {
-        await purgeFiles({ taskId: task.id });
-        const { error } = await supabase.from("tasks").delete().eq("id", task.id);
-        if (error) setError(error.message);
+        if (online) {
+          const cleanupError = await purgeFiles({ taskId: task.id });
+          if (cleanupError) {
+            setError(cleanupError);
+            unhide(task.id);
+            return;
+          }
+        }
+        else {
+          const removals = await Promise.all(attachments.filter((attachment) => attachment.task_id === task.id).map((attachment) =>
+            saveMutation("attachments", attachment.id, "delete", {}, attachment)
+          ));
+          const failedRemoval = removals.find((result) => result.error);
+          if (failedRemoval?.error) {
+            setError(`Não foi possível enfileirar a remoção dos anexos: ${failedRemoval.error}`);
+            unhide(task.id);
+            return;
+          }
+        }
+        const result = await saveMutation("tasks", task.id, "delete", {}, task);
+        if (result.error) setError(result.error);
         else {
           setTasks((prev) => prev.filter((x) => x.id !== task.id));
           setAttachments((prev) => prev.filter((a) => a.task_id !== task.id));
@@ -363,6 +373,20 @@ export default function Tasks({ view, openRequest, onHandled }: { view: string; 
       >
         <div className="row">
           <div className="task-primary">
+            {selectionMode && (
+              <input
+                type="checkbox"
+                className="task-select"
+                checked={selectedIds.has(t.id)}
+                onChange={(event) => setSelectedIds((previous) => {
+                  const next = new Set(previous);
+                  if (event.target.checked) next.add(t.id);
+                  else next.delete(t.id);
+                  return next;
+                })}
+                aria-label={`Selecionar ${t.title}`}
+              />
+            )}
             <input type="checkbox" checked={t.done || dormant} onChange={() => toggle(t)} aria-label={`Concluir ${t.title}`} />
             {editingId === t.id ? (
               <input className="edit" autoFocus value={editText} onChange={(e) => setEditText(e.target.value)} onKeyDown={(e) => onEditKey(e, t)} onBlur={() => saveEdit(t)} aria-label="Editar título da tarefa" />
@@ -446,7 +470,18 @@ export default function Tasks({ view, openRequest, onHandled }: { view: string; 
           const taskList = lists.find((list) => list.id === task.list_id);
           const listIndex = lists.findIndex((list) => list.id === task.list_id);
           return (
-            <li key={task.id} className={`calendar-event${task.done ? " is-done" : ""}`} style={cv(taskList ? listColor(taskList, listIndex) : "var(--ink)")}>
+            <li
+              key={task.id}
+              className={`calendar-event${task.done ? " is-done" : ""}`}
+              style={cv(taskList ? listColor(taskList, listIndex) : "var(--ink)")}
+              draggable
+              title="Arraste para outro dia para alterar o prazo"
+              onDragStart={(event) => {
+                event.dataTransfer.setData("text/plain", task.id);
+                event.dataTransfer.effectAllowed = "move";
+              }}
+              onDragEnd={() => setCalendarDropDate(null)}
+            >
               <input type="checkbox" checked={task.done} onChange={() => toggle(task)} aria-label={`Concluir ${task.title}`} />
               <button type="button" className="calendar-event-title" onClick={() => setOpenId(task.id)} title={task.title}>{task.title}</button>
               {task.due_time && <time>{task.due_time.slice(0, 5)}</time>}
@@ -488,6 +523,11 @@ export default function Tasks({ view, openRequest, onHandled }: { view: string; 
       <div className="headrow">
         <h2 className="heading" style={cv(headColor)}>{heading}</h2>
         <div className="head-actions">
+          {view !== "week" && (
+            <button type="button" className="ghost" aria-pressed={selectionMode} onClick={() => { setSelectionMode((mode) => !mode); setSelectedIds(new Set()); }}>
+              {selectionMode ? "Cancelar seleção" : "Selecionar"}
+            </button>
+          )}
           <button type="button" className="primary create-button" onClick={() => startCreating(view === "week" ? defaultWeekDueAt : undefined)}>Nova tarefa</button>
           {currentList && (
           <button className="ghost" aria-expanded={editingList} onClick={() => setEditingList((v) => !v)}>Editar lista</button>
@@ -495,6 +535,21 @@ export default function Tasks({ view, openRequest, onHandled }: { view: string; 
         </div>
       </div>
       {editingList && currentList && <ListEditor key={currentList.id} list={currentList} index={listIdx} onClose={() => setEditingList(false)} />}
+      {selectionMode && (
+        <div className="bulk-actions" role="group" aria-label="Ações em lote">
+          <span>{selectedIds.size} selecionada{selectedIds.size === 1 ? "" : "s"}</span>
+          <button type="button" className="chipbtn" disabled={!selectedIds.size} onClick={() => {
+            const now = new Date().toISOString();
+            tasks.filter((task) => selectedIds.has(task.id) && !task.done && !isDormant(task)).forEach((task) => patch(task, { done: true, done_at: now }));
+            setSelectedIds(new Set());
+          }}>Concluir</button>
+          <button type="button" className="chipbtn" disabled={!selectedIds.size} onClick={() => {
+            tasks.filter((task) => selectedIds.has(task.id)).forEach((task) => patch(task, { due_at: today() }));
+            setSelectedIds(new Set());
+          }}>Agendar hoje</button>
+          <button type="button" className="ghost" disabled={!selectedIds.size} onClick={() => setSelectedIds(new Set())}>Limpar</button>
+        </div>
+      )}
       {view === "today" && !loading && <DayLine stops={dayStops} celebrate={celebrate} />}
       {view === "week" && (
         <div className="week-nav" role="group" aria-label="Navegar entre semanas">
@@ -601,7 +656,18 @@ export default function Tasks({ view, openRequest, onHandled }: { view: string; 
                   );
                 })}
               </div>
-              <section className="calendar-mobile-agenda" aria-label={`Tarefas de ${fmt(mobileWeekDate)}`}>
+              <section
+                className={`calendar-mobile-agenda${calendarDropDate === mobileWeekDate ? " is-drop-target" : ""}`}
+                aria-label={`Tarefas de ${fmt(mobileWeekDate)}`}
+                onDragOver={(event) => { event.preventDefault(); setCalendarDropDate(mobileWeekDate); }}
+                onDragLeave={() => setCalendarDropDate(null)}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  const task = tasks.find((item) => item.id === event.dataTransfer.getData("text/plain"));
+                  if (task && task.due_at !== mobileWeekDate) void patch(task, { due_at: mobileWeekDate });
+                  setCalendarDropDate(null);
+                }}
+              >
                 <header className="calendar-mobile-agenda-head">
                   <h3>{new Date(`${mobileWeekDate}T12:00:00`).toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })}</h3>
                   <button type="button" className="calendar-add" aria-label={`Criar tarefa em ${fmt(mobileWeekDate)}`} onClick={() => startCreating(mobileWeekDate)}>+</button>
@@ -613,7 +679,19 @@ export default function Tasks({ view, openRequest, onHandled }: { view: string; 
                   const dayName = new Date(`${date}T12:00:00`).toLocaleDateString("pt-BR", { weekday: "short" });
                   const isToday = date === t0;
                   return (
-                    <section key={date} className={`calendar-cell${isToday ? " is-today" : ""}`} aria-label={`${dayName}, ${fmt(date)}${isToday ? ", hoje" : ""}`}>
+                    <section
+                      key={date}
+                      className={`calendar-cell${isToday ? " is-today" : ""}${calendarDropDate === date ? " is-drop-target" : ""}`}
+                      aria-label={`${dayName}, ${fmt(date)}${isToday ? ", hoje" : ""}`}
+                      onDragOver={(event) => { event.preventDefault(); setCalendarDropDate(date); }}
+                      onDragLeave={() => setCalendarDropDate(null)}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        const task = tasks.find((item) => item.id === event.dataTransfer.getData("text/plain"));
+                        if (task && task.due_at !== date) void patch(task, { due_at: date });
+                        setCalendarDropDate(null);
+                      }}
+                    >
                       <header className="calendar-cell-head">
                         <div><span>{dayName.replace(".", "")}</span><strong>{new Date(`${date}T12:00:00`).getDate()}</strong></div>
                         <button type="button" className="calendar-add" aria-label={`Criar tarefa em ${fmt(date)}`} onClick={() => startCreating(date)}>+</button>
