@@ -218,6 +218,11 @@ export default function CaptureSheet({ view, mode, onClose, onCreated, initialTa
             </label>
           </>
         )}
+        <div className="create-actions mobile-create-actions">
+          <button type="submit" className="primary" disabled={isTask ? !taskReady : !noteReady}>
+            {isTask ? "Criar tarefa" : "Criar nota"}
+          </button>
+        </div>
       </form>
     </Sheet>
   );
