@@ -1,5 +1,5 @@
 import { useData } from "../../lib/data";
-import { parseNote } from "../../lib/parse";
+import { parseNote, type ParsedLink } from "../../lib/parse";
 import { buildLinkAttachments } from "../../lib/links";
 import type { Note } from "../../lib/types";
 
@@ -15,7 +15,7 @@ export type NoteDraft = {
 // Cria uma nota a partir do texto (título, itens, etiquetas, cor, fixar e links)
 export function useAddNote() {
   const { notes, setNotes, setAttachments, saveMutation } = useData();
-  return function addNote(input: string | NoteDraft) {
+  return function addNote(input: string | NoteDraft, options: { links?: ParsedLink[] } = {}) {
     const p = typeof input === "string" ? parseNote(input) : null;
     const fields = typeof input === "string"
       ? { title: p?.title ?? "", body: p?.body ?? "", color: p?.color ?? null, tags: p?.tags ?? [], checklist: p?.checklist ?? [], pinned: p?.pinned ?? false }
@@ -24,7 +24,7 @@ export function useAddNote() {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
     const position = notes.length ? Math.min(...notes.map((note) => note.position ?? 0)) - 1 : 0;
-    const atts = buildLinkAttachments({ noteId: id }, p?.links ?? []);
+    const atts = buildLinkAttachments({ noteId: id }, [...(p?.links ?? []), ...(options.links ?? [])]);
     setNotes((prev) => [{ id, archived: false, created_at: now, updated_at: now, position, ...fields }, ...prev]);
     if (atts.length) setAttachments((prev) => [...prev, ...atts]);
     const dropAtts = () => setAttachments((prev) => prev.filter((a) => !atts.some((x) => x.id === a.id)));

@@ -10,6 +10,7 @@ import { ChecklistEditor } from "./Checklist";
 import MarkdownEditor from "./MarkdownEditor";
 import { PRIORITY, today } from "../lib/util";
 import { recurrenceLabel } from "../lib/parse";
+import type { ParsedLink } from "../lib/parse";
 import type { ChecklistItem } from "../lib/types";
 
 const RECURRENCE_PRESETS = ["daily", "weekdays", "weekly", "weekly:2", "monthly", "monthly:3", "monthly:12"];
@@ -21,9 +22,10 @@ type Props = {
   onCreated?: (id: string) => void;
   initialTag?: string | null;
   initialDueAt?: string;
+  shared?: { id: string; title: string; text: string; url: string | null };
 };
 
-export default function CaptureSheet({ view, mode, onClose, onCreated, initialTag, initialDueAt }: Props) {
+export default function CaptureSheet({ view, mode, onClose, onCreated, initialTag, initialDueAt, shared }: Props) {
   const { lists, tasks, notes, ownerId } = useData();
   const addTask = useAddTask();
   const addNote = useAddNote();
@@ -32,8 +34,14 @@ export default function CaptureSheet({ view, mode, onClose, onCreated, initialTa
   const formId = useId();
   const taskTags = useMemo(() => [...new Set(tasks.flatMap((task) => task.tags ?? []))].sort(), [tasks]);
   const noteTags = useMemo(() => [...new Set(notes.flatMap((note) => note.tags ?? []))].sort(), [notes]);
-  const taskKey = ownerId ? `pauta-draft:${ownerId}:task` : null;
-  const noteKey = ownerId ? `pauta-draft:${ownerId}:note` : null;
+  const taskKey = ownerId ? `pauta-draft:${ownerId}:task${shared ? `:share:${shared.id}` : ""}` : null;
+  const noteKey = ownerId ? `pauta-draft:${ownerId}:note${shared ? `:share:${shared.id}` : ""}` : null;
+  const sharedText = shared?.text === shared?.url ? "" : shared?.text ?? "";
+  const sharedTitle = shared?.title || sharedText.slice(0, 160) || (shared?.url ? new URL(shared.url).hostname.replace(/^www\./, "") : "");
+  const sharedBody = sharedText || (shared?.title ? shared.url ?? "" : "");
+  const sharedLinks: ParsedLink[] = shared?.url
+    ? [{ url: shared.url, title: new URL(shared.url).hostname.replace(/^www\./, "") }]
+    : [];
   const defaultTask: TaskDraft = {
     title: "",
     due_at: initialDueAt ?? (view === "today" ? today() : null),
@@ -54,8 +62,8 @@ export default function CaptureSheet({ view, mode, onClose, onCreated, initialTa
   };
   const restoredTask = taskKey ? readDraft<TaskDraft>(taskKey, isTaskDraft) : { draft: null, error: null };
   const restoredNote = noteKey ? readDraft<NoteDraft>(noteKey, isNoteDraft) : { draft: null, error: null };
-  const [task, setTask] = useState<TaskDraft>(() => restoredTask.draft ?? defaultTask);
-  const [note, setNote] = useState<NoteDraft>(() => restoredNote.draft ?? defaultNote);
+  const [task, setTask] = useState<TaskDraft>(() => restoredTask.draft ?? { ...defaultTask, title: sharedTitle });
+  const [note, setNote] = useState<NoteDraft>(() => restoredNote.draft ?? { ...defaultNote, title: shared?.title ?? "", body: sharedBody });
   const [draftMessage, setDraftMessage] = useState(
     (mode === "task" && restoredTask.draft) || (mode === "note" && restoredNote.draft)
       ? "Rascunho recuperado neste aparelho."
@@ -90,7 +98,7 @@ export default function CaptureSheet({ view, mode, onClose, onCreated, initialTa
   function submit(event: FormEvent) {
     event.preventDefault();
     if (isTask) {
-      const result = addTask(task, { view });
+      const result = addTask(task, { view, links: sharedLinks });
       if (!result) return;
       const removalError = taskKey ? removeDraft(taskKey) : null;
       if (removalError) setDraftMessage(removalError);
@@ -100,7 +108,7 @@ export default function CaptureSheet({ view, mode, onClose, onCreated, initialTa
       result.done.then((message) => message && toast(`Não foi possível salvar: ${message}`));
       return;
     }
-    const result = addNote(note);
+    const result = addNote(note, { links: sharedLinks });
     if (!result) return;
     const removalError = noteKey ? removeDraft(noteKey) : null;
     if (removalError) setDraftMessage(removalError);

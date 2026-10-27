@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { PALETTES, useAppearance, type Appearance } from "../../lib/appearance";
 import { currentSubscription, disablePush, enablePush, hasKey, isIOS, isStandalone, matchesKey, pushSupported, serverTest, testNotification } from "../../lib/push";
 import { useDialogFocus } from "../../lib/useDialogFocus";
+import { useData } from "../../lib/data";
+import { supabase } from "../../lib/supabase";
 
 type State = "loading" | "unsupported" | "install" | "nokey" | "blocked" | "off" | "on";
 
@@ -67,6 +69,130 @@ function AppearanceSection() {
   );
 }
 
+function CalendarSection() {
+  const { ownerId } = useData();
+  const [feedUrl, setFeedUrl] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const storageKey = ownerId ? `pauta-calendar-feed:${ownerId}` : null;
+
+  useEffect(() => {
+    if (!storageKey) {
+      setFeedUrl(null);
+      return;
+    }
+    try {
+      setFeedUrl(localStorage.getItem(storageKey));
+      setError("");
+    } catch (storageError) {
+      setError(`Não foi possível ler o link salvo neste aparelho: ${storageError instanceof Error ? storageError.message : String(storageError)}`);
+    }
+  }, [storageKey]);
+
+  async function createFeed() {
+    if (busy) return;
+    if (!window.confirm("Criar um link substitui qualquer link de calendário anterior da conta. Se já houver uma assinatura, ela precisará ser atualizada. Continuar?")) return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      if (!storageKey) throw new Error("Não foi possível identificar a conta atual.");
+      const probeKey = `${storageKey}:probe`;
+      localStorage.setItem(probeKey, "ok");
+      localStorage.removeItem(probeKey);
+      const { data: token, error: createError } = await supabase.rpc("create_calendar_feed_token");
+      if (createError) throw new Error(createError.message);
+      if (typeof token !== "string" || !/^[a-f0-9]{64}$/.test(token)) throw new Error("O servidor retornou um token de calendário inválido.");
+      const url = new URL("/functions/v1/calendar-feed", import.meta.env.VITE_SUPABASE_URL);
+      url.searchParams.set("token", token);
+      const nextFeedUrl = url.toString();
+      localStorage.setItem(storageKey, nextFeedUrl);
+      setFeedUrl(nextFeedUrl);
+      setMessage("Link criado. Adicione-o como calendário por assinatura.");
+    } catch (createError) {
+      setError(`Não foi possível criar o link de calendário: ${createError instanceof Error ? createError.message : String(createError)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function revokeFeed() {
+    if (busy || !window.confirm("Revogar o link interrompe a sincronização e invalida todas as assinaturas atuais. Continuar?")) return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const { error: revokeError } = await supabase.rpc("revoke_calendar_feed_token");
+      if (revokeError) throw new Error(revokeError.message);
+      if (storageKey) localStorage.removeItem(storageKey);
+      setFeedUrl(null);
+      setMessage("Link revogado.");
+    } catch (revokeError) {
+      setError(`Não foi possível revogar o link: ${revokeError instanceof Error ? revokeError.message : String(revokeError)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function copyFeed() {
+    if (!feedUrl) return;
+    setError("");
+    try {
+      await navigator.clipboard.writeText(feedUrl);
+      setMessage("Link copiado.");
+    } catch (copyError) {
+      setError(`Não foi possível copiar o link. Selecione e copie o endereço manualmente. ${copyError instanceof Error ? copyError.message : String(copyError)}`);
+    }
+  }
+
+  const webcalUrl = feedUrl?.replace(/^https?:/, "webcal:");
+  const googleUrl = feedUrl
+    ? `https://calendar.google.com/calendar/u/0/r/settings/addbyurl?url=${encodeURIComponent(feedUrl)}`
+    : null;
+
+  return (
+    <section className="settings-block calendar-settings">
+      <h3 className="modal-sub">Calendário</h3>
+      <p>Assine uma agenda com tarefas que têm prazo. Tarefas concluídas deixam de aparecer após a próxima atualização do calendário.</p>
+      <p className="calendar-sync-note">Apple e Google controlam a frequência de atualização das agendas assinadas; mudanças podem levar algumas horas para aparecer.</p>
+      {!feedUrl ? (
+        <button type="button" className="primary" disabled={busy || !ownerId} onClick={() => void createFeed()}>
+          {busy ? "Criando link…" : "Criar link de assinatura"}
+        </button>
+      ) : (
+        <>
+          <label className="calendar-feed-label">
+            Link privado da agenda
+            <input className="calendar-feed-url" readOnly value={feedUrl} onFocus={(event) => event.currentTarget.select()} aria-label="Link privado da agenda" />
+          </label>
+          <div className="calendar-feed-actions">
+            <button type="button" className="chipbtn" onClick={() => void copyFeed()}>Copiar link</button>
+            <a className="chipbtn" href={webcalUrl ?? undefined}>Abrir no Apple Calendar</a>
+            <a className="chipbtn" href={googleUrl ?? undefined} target="_blank" rel="noreferrer">Adicionar ao Google Calendar</a>
+            <button type="button" className="chipbtn clear" disabled={busy} onClick={() => void revokeFeed()}>Revogar link</button>
+          </div>
+          <p className="calendar-sync-note">O link funciona como uma senha: qualquer pessoa que o receber poderá ver títulos, prazos, horários, listas, etiquetas e prioridades. Ele fica salvo apenas neste navegador; se trocar de aparelho e não o tiver, gere outro para substituir este.</p>
+        </>
+      )}
+      {message && <p role="status">{message}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
+    </section>
+  );
+}
+
+function SharingSection() {
+  return (
+    <section className="settings-block">
+      <h3 className="modal-sub">Compartilhamento</h3>
+      <p>Em navegadores compatíveis, como Chrome no Android, compartilhe texto ou uma página e escolha o Pauta para criar uma tarefa ou nota.</p>
+      <p>No iPhone, crie um Atalho na Folha de Compartilhamento para codificar o texto recebido e abrir uma URL do Pauta com estes parâmetros:</p>
+      <code className="share-url-template">/?share=1&amp;title=...&amp;text=...&amp;url=...</code>
+      <p className="calendar-sync-note">Os valores precisam estar codificados para URL. A PWA no iOS não consegue se registrar diretamente como destino da Folha de Compartilhamento; o Atalho faz essa ponte.</p>
+    </section>
+  );
+}
+
 export default function NotificationsPanel({ onClose }: { onClose: () => void }) {
   const [state, setState] = useState<State>("loading");
   const [busy, setBusy] = useState(false);
@@ -107,6 +233,10 @@ export default function NotificationsPanel({ onClose }: { onClose: () => void })
       <div ref={dialogRef} className="modal" role="dialog" aria-modal="true" aria-labelledby="rem-title" tabIndex={-1} onClick={(e) => e.stopPropagation()}>
         <h2 id="rem-title">Ajustes</h2>
         <AppearanceSection />
+        <hr />
+        <CalendarSection />
+        <hr />
+        <SharingSection />
         <hr />
         <h3 className="modal-sub">Lembretes</h3>
 

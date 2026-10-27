@@ -152,6 +152,28 @@ alter table public.push_subscriptions add column if not exists tz text not null 
 alter table public.push_subscriptions add column if not exists user_agent text not null default '';
 alter table public.push_subscriptions add column if not exists created_at timestamptz not null default now();
 
+create table if not exists public.calendar_feed_tokens (
+  user_id uuid primary key references auth.users on delete cascade,
+  token_hash text not null unique,
+  created_at timestamptz not null default now()
+);
+
+create or replace function public.touch_task_updated_at()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists tasks_touch_updated_at on public.tasks;
+create trigger tasks_touch_updated_at
+before update on public.tasks
+for each row execute function public.touch_task_updated_at();
+
 create index if not exists tasks_user_due_idx on public.tasks (user_id, due_at);
 create index if not exists tasks_user_list_idx on public.tasks (user_id, list_id);
 create index if not exists notes_user_updated_idx on public.notes (user_id, updated_at desc);
@@ -164,8 +186,53 @@ alter table public.tasks enable row level security;
 alter table public.notes enable row level security;
 alter table public.attachments enable row level security;
 alter table public.push_subscriptions enable row level security;
+alter table public.calendar_feed_tokens enable row level security;
 
 grant select, insert, update, delete on public.lists, public.tasks, public.notes, public.attachments, public.push_subscriptions to authenticated;
+revoke all on public.calendar_feed_tokens from anon, authenticated;
+
+create or replace function public.create_calendar_feed_token()
+returns text
+language plpgsql
+security definer
+set search_path = pg_catalog, public, extensions
+as $$
+declare
+  current_user_id uuid := auth.uid();
+  raw_token text := encode(gen_random_bytes(32), 'hex');
+begin
+  if current_user_id is null then
+    raise exception 'Authentication required';
+  end if;
+
+  insert into public.calendar_feed_tokens (user_id, token_hash)
+  values (current_user_id, encode(digest(raw_token, 'sha256'), 'hex'))
+  on conflict (user_id) do update
+    set token_hash = excluded.token_hash, created_at = now();
+
+  return raw_token;
+end;
+$$;
+
+create or replace function public.revoke_calendar_feed_token()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'Authentication required';
+  end if;
+
+  delete from public.calendar_feed_tokens where user_id = auth.uid();
+end;
+$$;
+
+revoke all on function public.create_calendar_feed_token() from public, anon;
+revoke all on function public.revoke_calendar_feed_token() from public, anon;
+grant execute on function public.create_calendar_feed_token() to authenticated;
+grant execute on function public.revoke_calendar_feed_token() to authenticated;
 
 drop policy if exists "own lists" on public.lists;
 create policy "own lists" on public.lists for all

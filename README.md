@@ -18,6 +18,16 @@ O editor de notas oferece formatação de texto, títulos, listas, citações, c
 
 Em **Ajustes > Aparência**, escolha tema automático, claro ou escuro, combine com uma das paletas Clássico, Oceano, Floresta, Lavanda ou Pôr do sol, e selecione o estilo de papel. A preferência é salva neste navegador.
 
+## Calendário e captura compartilhada
+
+Para publicar uma agenda de tarefas, execute `supabase.sql` no SQL Editor do projeto, associe a CLI ao projeto (`supabase link --project-ref <id-do-projeto>`) e publique a Edge Function `calendar-feed` com `supabase functions deploy calendar-feed`. Depois, em **Ajustes > Calendário**, crie um link privado e assine-o no Apple Calendar ou adicione-o ao Google Calendar. A agenda inclui tarefas não concluídas com prazo; tarefas concluídas deixam de ser publicadas. Eventos sem horário são de dia inteiro; tarefas com horário usam um bloco de 30 minutos no horário local do calendário. Tarefas recorrentes publicam a próxima ocorrência atualmente indicada no Pauta; a data avança quando a tarefa é concluída no app.
+
+O link é uma credencial privada: qualquer pessoa que o possua pode ler títulos, prazos, horários, listas, etiquetas e prioridades. Ele é salvo localmente no navegador que o criou; revogue-o em Ajustes se compartilhado por engano. Cada usuário tem um único link ativo. Criar outro substitui o anterior. Agendas assinadas são atualizadas conforme a frequência definida pelo provedor (que pode levar algumas horas), não em tempo real. A lista ICS reflete a nuvem; alterações ainda pendentes no modo offline aparecem após sincronizarem.
+
+A PWA declara um destino de compartilhamento para navegadores compatíveis, como Chrome no Android. O Pauta também reconhece a URL `/?share=1&title=...&text=...&url=...`, permitindo que um Atalho do iPhone abra conteúdo compartilhado para criar uma tarefa ou nota. Para criar o Atalho no iOS, configure-o para aparecer na Folha de Compartilhamento, receber texto/páginas web, codificar os valores compartilhados e abrir a URL do Pauta com `share=1` e os campos `title`, `text` e `url`. O Safari no iOS não oferece o mesmo destino de compartilhamento para PWAs; o Atalho é necessário.
+
+Um widget nativo para a tela inicial ou bloqueio do iPhone exige um app iOS separado com WidgetKit e compilação/publicação em macOS. O feed ICS pode servir de fonte para esse widget, mas não transforma a PWA em um widget nem permite concluir tarefas diretamente pela tela bloqueada.
+
 ## Uso offline e backups
 
 Depois que os dados forem carregados online, o app mantém uma cópia local por conta. Tarefas, notas, listas e links podem ser criados, editados, concluídos e excluídos offline; as alterações ficam em uma fila local e são enviadas quando a conexão voltar. O indicador no topo mostra alterações pendentes e erros de sincronização.

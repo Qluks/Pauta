@@ -1,5 +1,5 @@
 import { useData } from "../../lib/data";
-import { parseQuick } from "../../lib/parse";
+import { parseQuick, type ParsedLink } from "../../lib/parse";
 import { buildLinkAttachments } from "../../lib/links";
 import { reminderPassed, today } from "../../lib/util";
 import type { Task } from "../../lib/types";
@@ -18,7 +18,7 @@ export type TaskDraft = {
 // Cria uma tarefa a partir do texto digitado (prazo, horário, lista, etiquetas, prioridade, repetição e links). A tela atualiza na hora.
 export function useAddTask() {
   const { setTasks, lists, setAttachments, saveMutation } = useData();
-  return function addTask(input: string | TaskDraft, o: { view?: string; listId?: string | null; tag?: string | null; defaultDueAt?: string | null } = {}) {
+  return function addTask(input: string | TaskDraft, o: { view?: string; listId?: string | null; tag?: string | null; defaultDueAt?: string | null; links?: ParsedLink[] } = {}) {
     const p = typeof input === "string" ? parseQuick(input, lists) : null;
     const title = typeof input === "string" ? p?.title ?? "" : input.title.trim();
     if (!title) return null;
@@ -51,7 +51,7 @@ export function useAddTask() {
         };
     const id = crypto.randomUUID();
     const temp: Task = { id, done: false, done_at: null, snoozed_until: null, created_at: new Date().toISOString(), ...fields };
-    const atts = buildLinkAttachments({ taskId: id }, p?.links ?? []);
+    const atts = buildLinkAttachments({ taskId: id }, [...(p?.links ?? []), ...(o.links ?? [])]);
     setTasks((prev) => [temp, ...prev]);
     if (atts.length) setAttachments((prev) => [...prev, ...atts]);
     const dropAtts = () => setAttachments((prev) => prev.filter((a) => !atts.some((x) => x.id === a.id)));

@@ -953,6 +953,13 @@ kbd { padding: 1px 6px; border: 1px solid var(--rule); border-bottom-width: 2px;
 .modal hr { margin: 2px 0; border: 0; border-top: 1.5px solid var(--rule); }
 .modal-sub { margin: 4px 0 0; font: 700 1rem var(--font-ui); }
 .settings-block { display: grid; gap: 12px; }
+.calendar-settings .calendar-sync-note { color: var(--muted); font: 500 0.88rem/1.45 var(--font-ui); }
+.calendar-feed-label { display: grid; gap: 5px; color: var(--muted); font-size: 0.84rem; font-weight: 600; }
+.calendar-feed-url { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); color: var(--ink); font: 400 0.8rem/1.4 ui-monospace, "Cascadia Code", Consolas, monospace; }
+.calendar-feed-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.calendar-feed-actions a { display: inline-flex; align-items: center; text-decoration: none; }
+.shared-preview { max-width: 100%; overflow-wrap: anywhere; padding: 10px 12px; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); }
+.share-url-template { display: block; min-width: 0; overflow-wrap: anywhere; padding: 9px 10px; border-radius: 8px; background: var(--surface); color: var(--ink); font-size: 0.84rem; }
 .seg-row { display: grid; gap: 4px; }
 .seg-group { display: flex; flex-wrap: wrap; gap: 6px; }
 .seg { padding: 6px 14px; background: var(--surface); border: 1.5px solid var(--rule); border-radius: 999px; font: 600 0.85rem var(--font-ui); }

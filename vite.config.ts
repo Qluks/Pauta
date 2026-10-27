@@ -20,6 +20,11 @@ export default defineConfig({
         start_url: "/",
         scope: "/",
         display: "standalone",
+        share_target: {
+          action: "/?share=1",
+          method: "GET",
+          params: { title: "title", text: "text", url: "url" },
+        },
         background_color: "#eaf0f6",
         theme_color: "#16213a",
         icons: [

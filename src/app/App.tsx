@@ -12,11 +12,40 @@ import CommandPalette from "../features/navigation/CommandPalette";
 import ShortcutsHelp from "../features/navigation/ShortcutsHelp";
 import SettingsPanel from "../features/settings/Notifications";
 import { useSavedTaskFilters } from "../features/tasks/savedFilters";
+import CaptureSheet from "../components/CaptureSheet";
+import Sheet from "../components/Sheet";
 
 const Tasks = lazy(() => import("../features/tasks/Tasks"));
 const Notes = lazy(() => import("../features/notes/Notes"));
 
 type Req = { id: string; n: number };
+type IncomingShare = { id: string; title: string; text: string; url: string | null };
+
+function readIncomingShare(): IncomingShare | null {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("share") !== "1") return null;
+  const title = params.get("title")?.trim().slice(0, 200) ?? "";
+  const text = params.get("text")?.trim().slice(0, 4000) ?? "";
+  const rawUrl = params.get("url")?.trim().slice(0, 2048) ?? "";
+  const httpUrl = (value: string): string | null => {
+    if (!value) return null;
+    try {
+      const parsed = new URL(value);
+      if (parsed.protocol === "https:" || parsed.protocol === "http:") return parsed.toString();
+    } catch {
+      return null;
+    }
+    return null;
+  };
+  let url = httpUrl(rawUrl);
+  if (!url) {
+    const textUrl = text.match(/https?:\/\/[^\s<>"']+/i)?.[0].replace(/[.,;:!?)\]]+$/, "") ?? "";
+    url = httpUrl(textUrl);
+  }
+  if (!title && !text && !url) return null;
+  return { id: crypto.randomUUID(), title, text, url };
+}
+
 const conflictFields = ["title", "body", "name", "due_at", "due_time", "done", "priority", "position", "archived", "pinned"];
 const conflictFieldLabels: Record<string, string> = {
   title: "Título",
@@ -45,6 +74,8 @@ function Main({ onSignOut }: { onSignOut: () => void }) {
   const [help, setHelp] = useState(false);
   const [settings, setSettings] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
+  const [incomingShare, setIncomingShare] = useState<IncomingShare | null>(readIncomingShare);
+  const [shareMode, setShareMode] = useState<"task" | "note" | null>(null);
   const [taskReq, setTaskReq] = useState<Req | null>(null);
   const [noteReq, setNoteReq] = useState<Req | null>(null);
   const mounted = useRef(false);
@@ -62,6 +93,11 @@ function Main({ onSignOut }: { onSignOut: () => void }) {
       window.clearTimeout(timer);
     };
   }, [view]);
+
+  useEffect(() => {
+    if (!incomingShare) return;
+    history.replaceState(history.state, "", `${window.location.pathname}${window.location.hash}`);
+  }, [incomingShare]);
 
   // Atalhos: Ctrl+K paleta · ? ajuda · 1-6 telas · / busca
   useEffect(() => {
@@ -120,6 +156,10 @@ function Main({ onSignOut }: { onSignOut: () => void }) {
   const openNote = (id: string, archived: boolean) => {
     setView(archived ? "archive" : "notes");
     setNoteReq({ id, n: Date.now() });
+  };
+  const finishShare = () => {
+    setIncomingShare(null);
+    setShareMode(null);
   };
 
   return (
@@ -190,6 +230,20 @@ function Main({ onSignOut }: { onSignOut: () => void }) {
       )}
       {help && <ShortcutsHelp onClose={() => setHelp(false)} />}
       {settings && <SettingsPanel onClose={() => setSettings(false)} />}
+      {incomingShare && !shareMode && (
+        <Sheet title="Conteúdo compartilhado" onClose={finishShare}>
+          <p>O que você quer criar com este conteúdo?</p>
+          {(incomingShare.title || incomingShare.text) && <p className="shared-preview">{incomingShare.title || incomingShare.text}</p>}
+          {incomingShare.url && <p className="shared-preview">{incomingShare.url}</p>}
+          <div className="modal-actions">
+            <button type="button" className="primary" onClick={() => setShareMode("task")}>Criar tarefa</button>
+            <button type="button" className="chipbtn" onClick={() => setShareMode("note")}>Criar nota</button>
+          </div>
+        </Sheet>
+      )}
+      {incomingShare && shareMode && (
+        <CaptureSheet view="all" mode={shareMode} shared={incomingShare} onClose={finishShare} />
+      )}
     </div>
   );
 }
