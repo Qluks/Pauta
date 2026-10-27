@@ -1,4 +1,4 @@
-import { CSSProperties, MouseEvent, PointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, MouseEvent, PointerEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChecklistItem, Note } from "../../lib/types";
 import { cv, lineVar } from "../../lib/colors";
 import { useData } from "../../lib/data";
@@ -27,6 +27,28 @@ function isNoteEditDraft(value: unknown): value is { title: string; body: string
     (draft.color === null || typeof draft.color === "string");
 }
 
+function NoteSummaryBody({ value }: { value: string }) {
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [overflow, setOverflow] = useState(false);
+
+  useLayoutEffect(() => {
+    const body = bodyRef.current;
+    if (!body) return;
+    const measure = () => setOverflow(body.scrollHeight > body.clientHeight + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(body);
+    if (body.firstElementChild) observer.observe(body.firstElementChild);
+    return () => observer.disconnect();
+  }, [value]);
+
+  return (
+    <div ref={bodyRef} className={`note-summary-body${overflow ? " has-overflow" : ""}`}>
+      <MarkdownContent value={value} />
+    </div>
+  );
+}
+
 export default function Notes({ view, request, onHandled }: { view: string; request?: { id: string; n: number } | null; onHandled?: () => void }) {
   const archive = view === "archive";
   const { notes, setNotes, attachments, setAttachments, purgeFiles, loading, loadError, reload, hide, unhide, saveMutation, online, ownerId } = useData();
@@ -38,7 +60,6 @@ export default function Notes({ view, request, onHandled }: { view: string; requ
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [edit, setEdit] = useState({ title: "", body: "", tags: [] as string[], checklist: [] as ChecklistItem[], color: null as string | null });
-  const [attOpen, setAttOpen] = useState<string | null>(null);
   const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
   const [draggingNote, setDraggingNote] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
@@ -158,6 +179,7 @@ export default function Notes({ view, request, onHandled }: { view: string; requ
   }
 
   function startEdit(n: Note) {
+    setExpandedNoteId(n.id);
     setEditingId(n.id);
     const initial = { title: n.title ?? "", body: n.body ?? "", tags: n.tags ?? [], checklist: n.checklist ?? [], color: n.color };
     try {
@@ -167,6 +189,15 @@ export default function Notes({ view, request, onHandled }: { view: string; requ
     } catch (storageError) {
       setError(`Não foi possível recuperar o rascunho da nota: ${storageError instanceof Error ? storageError.message : String(storageError)}`);
       setEdit(initial);
+    }
+  }
+  function cancelEdit(n: Note) {
+    setEditingId(null);
+    if (!ownerId) return;
+    try {
+      localStorage.removeItem(`pauta-draft:${ownerId}:note-edit:${n.id}`);
+    } catch (storageError) {
+      setError(`Não foi possível descartar o rascunho da nota: ${storageError instanceof Error ? storageError.message : String(storageError)}`);
     }
   }
   function saveEdit(n: Note) {
@@ -189,10 +220,9 @@ export default function Notes({ view, request, onHandled }: { view: string; requ
       edit.color !== n.color;
     if (changed) patch(n, { title, body, tags: edit.tags, checklist, color: edit.color });
   }
-  function openNoteMenu(event: MouseEvent<HTMLButtonElement>, note: Note, count: number) {
+  function openNoteMenu(event: MouseEvent<HTMLButtonElement>, note: Note) {
     const items: MenuItem[] = [
       { label: "Editar nota", onSelect: () => startEdit(note) },
-      { label: attOpen === note.id ? "Fechar anexos" : count ? `Ver anexos (${count})` : "Anexar arquivo ou link", onSelect: () => setAttOpen(attOpen === note.id ? null : note.id) },
     ];
     if (!archive) items.push({ label: note.pinned ? "Desafixar nota" : "Fixar nota", onSelect: () => patch(note, { pinned: !note.pinned }) });
     items.push({ label: note.archived ? "Desarquivar nota" : "Arquivar nota", onSelect: () => archiveToggle(note) });
@@ -282,21 +312,37 @@ export default function Notes({ view, request, onHandled }: { view: string; requ
       : count > 0 ? `${count} anexos` : "Abrir nota");
     return (
       <article key={n.id} data-note-id={expanded ? undefined : n.id} data-note-group={group} className={`note${expanded ? " note-expanded" : ""}${draggingNote === n.id ? " dragging" : ""}${dropTarget === n.id ? " drop-target" : ""}`} style={{ ...cv(colorOf(n.color)), "--i": Math.min(i, 8) } as CSSProperties} data-tinted={n.color !== null}>
-        {editingId === n.id ? (
-          <>
-            <input className="ntitle" autoFocus value={edit.title} onChange={(e) => setEdit({ ...edit, title: e.target.value })} placeholder="Título" aria-label="Título" />
-            <MarkdownEditor className="note-body-editor" rows={7} value={edit.body} onChange={(body) => setEdit((current) => ({ ...current, body }))} placeholder="Escreva sua nota…" />
-            <ChecklistEditor items={edit.checklist} onChange={(checklist) => setEdit({ ...edit, checklist })} />
-            <TagInput tags={edit.tags} onChange={(tags) => setEdit({ ...edit, tags })} suggestions={allTagNames} listId="tags-edit" />
+        {editingId === n.id && expanded ? (
+          <div className="note-edit-form">
+            <label className="note-edit-field">
+              <span className="lbl">Título</span>
+              <input autoFocus value={edit.title} onChange={(e) => setEdit({ ...edit, title: e.target.value })} placeholder="Título da nota" aria-label="Título da nota" />
+            </label>
+            <div className="note-edit-field">
+              <span className="lbl">Texto</span>
+              <MarkdownEditor className="note-body-editor" rows={7} value={edit.body} onChange={(body) => setEdit((current) => ({ ...current, body }))} placeholder="Escreva sua nota…" />
+            </div>
+            <div className="note-edit-field">
+              <span className="lbl">Checklist</span>
+              <ChecklistEditor items={edit.checklist} onChange={(checklist) => setEdit({ ...edit, checklist })} />
+            </div>
+            <div className="note-edit-field">
+              <span className="lbl">Etiquetas</span>
+              <TagInput tags={edit.tags} onChange={(tags) => setEdit({ ...edit, tags })} suggestions={allTagNames} listId="tags-edit" />
+            </div>
             <div className="note-edit-color">
               <span className="lbl">Cor</span>
               <Swatches value={edit.color} onPick={(color) => setEdit({ ...edit, color })} />
             </div>
-            <div className="nactions">
-              <button className="primary small" onClick={() => saveEdit(n)}>Salvar</button>
-              <button className="ghost" onClick={() => setEditingId(null)}>Cancelar</button>
+            <div className="note-edit-field">
+              <span className="lbl">Anexos</span>
+              <Attachments noteId={n.id} />
             </div>
-          </>
+            <div className="note-edit-actions">
+              <button type="button" className="ghost" onClick={() => cancelEdit(n)}>Cancelar</button>
+              <button type="button" className="primary small" onClick={() => saveEdit(n)}>Salvar alterações</button>
+            </div>
+          </div>
         ) : (
           <>
             {expanded ? (
@@ -316,7 +362,7 @@ export default function Notes({ view, request, onHandled }: { view: string; requ
                 aria-label={`Abrir nota: ${summary.replace(/\s+/g, " ").slice(0, 100)}`}
               >
                 {n.title && <h3>{n.title}</h3>}
-                {n.body && <MarkdownContent value={n.body} />}
+                {n.body && <NoteSummaryBody value={n.body} />}
                 {!n.title && !n.body && <span>{summary}</span>}
                 {!expanded && (checklist.length > 0 || count > 0) && (
                   <span className="note-preview-meta">
@@ -327,7 +373,7 @@ export default function Notes({ view, request, onHandled }: { view: string; requ
               </div>
             )}
             {expanded && <ChecklistView items={checklist} onToggle={(id) => toggleItem(n, id)} />}
-            {(expanded && count > 0 || attOpen === n.id) && <Attachments noteId={n.id} editable={attOpen === n.id} />}
+            {count > 0 && <Attachments noteId={n.id} editable={false} />}
             <div className="note-footer">
               {(n.tags ?? []).length > 0 && (
                 <div className="ntags">
@@ -340,7 +386,7 @@ export default function Notes({ view, request, onHandled }: { view: string; requ
                 </div>
               )}
               <div className="nactions">
-                <button type="button" className="ghost mobile-note-more" aria-label={`Mais ações para a nota ${n.title || "sem título"}`} aria-haspopup="menu" onClick={(event) => openNoteMenu(event, n, count)}>
+                <button type="button" className="ghost mobile-note-more" aria-label={`Mais ações para a nota ${n.title || "sem título"}`} aria-haspopup="menu" onClick={(event) => openNoteMenu(event, n)}>
                   <span aria-hidden="true">•••</span>
                   <span>Mais</span>
                 </button>
@@ -375,9 +421,6 @@ export default function Notes({ view, request, onHandled }: { view: string; requ
                   </button>
                 )}
                 <button className="ghost" onClick={() => startEdit(n)}>Editar</button>
-                <button className="ghost" aria-expanded={attOpen === n.id} onClick={() => setAttOpen(attOpen === n.id ? null : n.id)}>
-                  {attOpen === n.id ? "Fechar anexos" : count > 0 ? `Anexos (${count})` : "Anexar"}
-                </button>
                 {!archive && (
                   <button className="ghost" onClick={() => patch(n, { pinned: !n.pinned })}>{n.pinned ? "Desafixar" : "Fixar"}</button>
                 )}
@@ -455,7 +498,6 @@ export default function Notes({ view, request, onHandled }: { view: string; requ
           onClose={() => {
             setExpandedNoteId(null);
             setEditingId(null);
-            setAttOpen(null);
           }}
         >
           {card(expandedNote, 0, true)}
